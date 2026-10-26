@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.momocircle.service.ledger.MigrationUpgradeH2Test
--------------------------------------------------------------------------------
-Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.500 s -- in com.momocircle.service.ledger.MigrationUpgradeH2Test
