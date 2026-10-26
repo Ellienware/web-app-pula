@@ -1,0 +1,40 @@
+package com.momocircle.domain.enums;
+
+/**
+ * What kind of seller a Business is. Drives which capabilities the seller
+ * dashboard shows and how the storefront is labelled to consumers — never
+ * used as a stigmatizing label (see the master evolution brief's own
+ * instruction to use respectful language like "Local Business" rather than
+ * making "informal" a negative UI term).
+ */
+public enum BusinessType {
+    /** Structured retailer with a real catalogue/stock feed, e.g. a supermarket chain. */
+    FORMAL_RETAILER,
+    /** A local shop with a smaller catalogue and manual stock updates. */
+    LOCAL_BUSINESS,
+    /** Spaza shops, street vendors, home businesses, and similar informal traders. */
+    INFORMAL_TRADER,
+    /** Sells a service (hairdresser, mechanic, tutor, etc.) rather than physical stock. */
+    SERVICE_PROVIDER,
+    /** Registers a wholesale catalogue and supplies stock to other PULA Businesses (brief §12). */
+    WHOLESALER_SUPPLIER,
+    /** Doesn't fit the categories above — kept broad rather than forcing a mis-fit. */
+    OTHER_SMALL_BUSINESS,
+    // ---- PULA Food: prepared-food seller types. Existing values above are unchanged. ----
+    RESTAURANT,
+    CAFE,
+    FAST_FOOD,
+    FOOD_VENDOR,
+    HOME_KITCHEN,
+    SPAZA,
+    BAKERY,
+    CATERING;
+
+    /** True for businesses that can run a menu (categories, food details, branches, modifiers). */
+    public boolean isFood() {
+        return switch (this) {
+            case RESTAURANT, CAFE, FAST_FOOD, FOOD_VENDOR, HOME_KITCHEN, SPAZA, BAKERY, CATERING -> true;
+            default -> false;
+        };
+    }
+}

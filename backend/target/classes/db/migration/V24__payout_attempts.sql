@@ -1,0 +1,1 @@
+ALTER TABLE driver_payouts ADD COLUMN attempts INT NOT NULL DEFAULT 1;

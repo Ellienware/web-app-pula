@@ -1,0 +1,808 @@
+diff --git a/backend/src/main/java/com/momocircle/controller/BusinessController.java b/backend/src/main/java/com/momocircle/controller/BusinessController.java
+--- a/backend/src/main/java/com/momocircle/controller/BusinessController.java	2026-10-26 10:01:42.250179431 +0000
++++ b/backend/src/main/java/com/momocircle/controller/BusinessController.java	2026-10-26 10:01:42.274262803 +0000
+@@ -3,6 +3,7 @@
+ import com.momocircle.dto.MarketDtos.BusinessProfileCompleteness;
+ import com.momocircle.dto.MarketDtos.BusinessResponse;
+ import com.momocircle.dto.MarketDtos.CreateBusinessRequest;
++import com.momocircle.dto.MarketDtos.PublicBusinessResponse;
+ import com.momocircle.dto.MarketDtos.UpdateBusinessRequest;
+ import com.momocircle.security.CurrentUserService;
+ import com.momocircle.service.BusinessReadinessService;
+@@ -57,13 +58,17 @@
+         return readinessService.computeFor(businessService.requireOwn(currentUser.require()));
+     }
+ 
++    /**
++     * Public storefront read. Anonymous and other signed-in callers receive {@link PublicBusinessResponse} only; the owner and
++     * admins receive the full {@link BusinessResponse}. Inactive businesses are 404 to everyone else.
++     */
+     @GetMapping("/api/businesses/{businessId}")
+-    public BusinessResponse get(@PathVariable String businessId) {
+-        return businessService.get(businessId);
++    public Object get(@PathVariable String businessId) {
++        return businessService.getForViewer(businessId, currentUser.optional().orElse(null));
+     }
+ 
+     @GetMapping("/api/businesses")
+-    public Page<BusinessResponse> browse(@RequestParam(required = false) String category,
++    public Page<PublicBusinessResponse> browse(@RequestParam(required = false) String category,
+                                           @RequestParam(required = false) com.momocircle.domain.enums.BusinessType businessType,
+                                           @RequestParam(required = false) com.momocircle.domain.enums.BusinessCapability capability,
+                                           @RequestParam(defaultValue = "0") int page,
+diff --git a/backend/src/main/java/com/momocircle/dto/MarketDtos.java b/backend/src/main/java/com/momocircle/dto/MarketDtos.java
+--- a/backend/src/main/java/com/momocircle/dto/MarketDtos.java	2026-10-26 10:01:42.242680529 +0000
++++ b/backend/src/main/java/com/momocircle/dto/MarketDtos.java	2026-10-26 10:01:42.266612602 +0000
+@@ -28,7 +28,8 @@
+             String description,
+             String logoUrl,
+             @NotBlank String category,
+-            BusinessType businessType,
++            /** Required on creation: the owner must deliberately choose a type; there is no implicit default. */
++            @NotNull(message = "Choose a business type") BusinessType businessType,
+             String location,
+             String contactPhone,
+             String contactEmail,
+@@ -90,6 +91,33 @@
+             boolean active,
+             BigDecimal ratingAverage,
+             int ratingCount,
++            BigDecimal minimumOrderAmount,
++            BigDecimal deliveryFee,
++            Instant createdAt
++    ) {}
++
++    /**
++     * What anyone (including anonymous callers) may see of a business: storefront fields only. Deliberately has NO owner id or
++     * name, NO registration status or number, and no other internal fields. The business contact phone and email appear because
++     * the public storefront has always shown them (BusinessProfilePage); the owner enters them as the business's trading contacts.
++     * The full {@link BusinessResponse} is returned only to the owner and to admins.
++     */
++    public record PublicBusinessResponse(
++            String id,
++            String name,
++            String description,
++            String logoUrl,
++            String category,
++            BusinessType businessType,
++            String location,
++            String contactPhone,
++            String contactEmail,
++            List<String> operatingHours,
++            List<FulfilmentOption> fulfilmentOptions,
++            List<BusinessCapability> capabilities,
++            boolean active,
++            BigDecimal ratingAverage,
++            int ratingCount,
+             BigDecimal minimumOrderAmount,
+             BigDecimal deliveryFee,
+             Instant createdAt
+diff --git a/backend/src/main/java/com/momocircle/exception/GlobalExceptionHandler.java b/backend/src/main/java/com/momocircle/exception/GlobalExceptionHandler.java
+--- a/backend/src/main/java/com/momocircle/exception/GlobalExceptionHandler.java	2026-10-26 10:01:42.245591852 +0000
++++ b/backend/src/main/java/com/momocircle/exception/GlobalExceptionHandler.java	2026-10-26 10:01:42.269438973 +0000
+@@ -44,6 +44,19 @@
+ @ExceptionHandler(HttpMessageNotReadableException.class)
+ public ResponseEntity<Map<String, Object>> handleUnreadableBody(
+         HttpMessageNotReadableException ex) {
++    // An unknown enum identifier (e.g. an unsupported businessType) gets a clear, field-level 400 that lists the allowed
++    // values instead of the generic message. The submitted value is deliberately not echoed back.
++    if (ex.getCause() instanceof com.fasterxml.jackson.databind.exc.InvalidFormatException ife
++            && ife.getTargetType() != null && ife.getTargetType().isEnum()) {
++        String field = ife.getPath().stream()
++                .map(com.fasterxml.jackson.databind.JsonMappingException.Reference::getFieldName)
++                .filter(java.util.Objects::nonNull)
++                .reduce((first, second) -> second).orElse("value");
++        String allowed = java.util.Arrays.stream(ife.getTargetType().getEnumConstants())
++                .map(Object::toString).collect(Collectors.joining(", "));
++        return ResponseEntity.badRequest().body(body(HttpStatus.BAD_REQUEST, "Validation failed",
++                Map.of(field, "Unsupported value. Allowed values: " + allowed), null));
++    }
+     return ResponseEntity.badRequest().body(
+             body(HttpStatus.BAD_REQUEST, "Malformed request body", null, null)
+     );
+diff --git a/backend/src/main/java/com/momocircle/security/CurrentUserService.java b/backend/src/main/java/com/momocircle/security/CurrentUserService.java
+--- a/backend/src/main/java/com/momocircle/security/CurrentUserService.java	2026-10-26 10:01:42.253413339 +0000
++++ b/backend/src/main/java/com/momocircle/security/CurrentUserService.java	2026-10-26 10:01:42.277604760 +0000
+@@ -4,6 +4,7 @@
+ import com.momocircle.domain.enums.PlatformRole;
+ import com.momocircle.exception.ApiException;
+ import com.momocircle.repository.UserRepository;
++import org.springframework.security.authentication.AnonymousAuthenticationToken;
+ import org.springframework.security.core.context.SecurityContextHolder;
+ import org.springframework.stereotype.Service;
+ 
+@@ -31,6 +32,18 @@
+         return user;
+     }
+ 
++    /**
++     * The signed-in, active user if the request carries a valid identity, otherwise empty. For endpoints that are public but show
++     * more to the owner or an admin; never throws for anonymous callers.
++     */
++    public java.util.Optional<User> optional() {
++        var auth = SecurityContextHolder.getContext().getAuthentication();
++        if (auth == null || auth instanceof AnonymousAuthenticationToken || auth.getPrincipal() == null) {
++            return java.util.Optional.empty();
++        }
++        return userRepository.findById(auth.getPrincipal().toString()).filter(User::isActive);
++    }
++
+     /** Same as {@link #require()} but also asserts the caller holds the platform ADMIN role. */
+     public User requireAdmin() {
+         User user = require();
+diff --git a/backend/src/main/java/com/momocircle/service/BusinessService.java b/backend/src/main/java/com/momocircle/service/BusinessService.java
+--- a/backend/src/main/java/com/momocircle/service/BusinessService.java	2026-10-26 10:01:42.248596741 +0000
++++ b/backend/src/main/java/com/momocircle/service/BusinessService.java	2026-10-26 10:01:42.272672425 +0000
+@@ -3,7 +3,9 @@
+ import com.momocircle.domain.Business;
+ import com.momocircle.domain.User;
+ import com.momocircle.domain.enums.BusinessCapability;
++import com.momocircle.domain.enums.PlatformRole;
+ import com.momocircle.dto.MarketDtos.BusinessResponse;
++import com.momocircle.dto.MarketDtos.PublicBusinessResponse;
+ import com.momocircle.dto.MarketDtos.CreateBusinessRequest;
+ import com.momocircle.dto.MarketDtos.UpdateBusinessRequest;
+ import com.momocircle.exception.ApiException;
+@@ -33,9 +35,12 @@
+         business.setDescription(req.description());
+         business.setLogoUrl(req.logoUrl());
+         business.setCategory(req.category());
+-        if (req.businessType() != null) {
+-            business.setBusinessType(req.businessType());
++        // No implicit default: a missing type is a client error, never a silent LOCAL_BUSINESS.
++        // (The controller's @Valid rejects null first; this guards direct service callers.)
++        if (req.businessType() == null) {
++            throw ApiException.badRequest("Choose a business type");
+         }
++        business.setBusinessType(req.businessType());
+         business.setLocation(req.location());
+         business.setContactPhone(req.contactPhone());
+         business.setContactEmail(req.contactEmail());
+@@ -100,14 +105,29 @@
+         return toResponse(requireOwn(owner));
+     }
+ 
++    /**
++     * Single business as seen by {@code viewer} (null = anonymous). The owner and admins get the full {@link BusinessResponse}
++     * (including inactive businesses). Everyone else gets {@link PublicBusinessResponse}, and an inactive (deactivated or
++     * suspended) business is reported as not found so its existence is not disclosed.
++     */
+     @Transactional(readOnly = true)
+-    public BusinessResponse get(String businessId) {
+-        return toResponse(requireById(businessId));
++    public Object getForViewer(String businessId, User viewer) {
++        Business b = requireById(businessId);
++        boolean privileged = viewer != null
++                && (viewer.getRole() == PlatformRole.ADMIN || b.getOwner().getId().equals(viewer.getId()));
++        if (privileged) {
++            return toResponse(b);
++        }
++        if (!b.isActive()) {
++            throw ApiException.notFound("Business not found");
++        }
++        return toPublicResponse(b);
+     }
+ 
++    /** Public browse. Every repository query used here already filters {@code active = true}. */
+     @Transactional(readOnly = true)
+-    public Page<BusinessResponse> browse(String category, com.momocircle.domain.enums.BusinessType businessType,
+-                                          BusinessCapability capability, Pageable pageable) {
++    public Page<PublicBusinessResponse> browse(String category, com.momocircle.domain.enums.BusinessType businessType,
++                                                BusinessCapability capability, Pageable pageable) {
+         boolean hasCategory = category != null && !category.isBlank();
+         Page<Business> page;
+         if (capability != null && hasCategory) {
+@@ -123,7 +143,7 @@
+         } else {
+             page = businessRepository.findByActiveTrue(pageable);
+         }
+-        return page.map(this::toResponse);
++        return page.map(this::toPublicResponse);
+     }
+ 
+     public Business requireById(String businessId) {
+@@ -142,6 +162,16 @@
+         }
+     }
+ 
++    PublicBusinessResponse toPublicResponse(Business b) {
++        return new PublicBusinessResponse(
++                b.getId(), b.getName(), b.getDescription(), b.getLogoUrl(), b.getCategory(), b.getBusinessType(),
++                b.getLocation(), b.getContactPhone(), b.getContactEmail(), new java.util.ArrayList<>(b.getOperatingHours()),
++                new java.util.ArrayList<>(b.getFulfilmentOptions()),
++                new java.util.ArrayList<>(b.getCapabilities()),
++                b.isActive(), b.getRatingAverage(), b.getRatingCount(), b.getMinimumOrderAmount(), b.getDeliveryFee(),
++                b.getCreatedAt());
++    }
++
+     private BusinessResponse toResponse(Business b) {
+         return new BusinessResponse(
+                 b.getId(), b.getOwner().getId(), b.getOwner().getFullName(),
+diff --git a/backend/src/test/java/com/momocircle/service/BusinessServiceTest.java b/backend/src/test/java/com/momocircle/service/BusinessServiceTest.java
+--- a/backend/src/test/java/com/momocircle/service/BusinessServiceTest.java	2026-10-26 10:01:42.240144293 +0000
++++ b/backend/src/test/java/com/momocircle/service/BusinessServiceTest.java	2026-10-26 10:01:42.264500125 +0000
+@@ -23,6 +23,8 @@
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ import static org.mockito.ArgumentMatchers.any;
+ import static org.mockito.Mockito.mock;
++import static org.mockito.Mockito.never;
++import static org.mockito.Mockito.verify;
+ import static org.mockito.Mockito.when;
+ 
+ /**
+@@ -53,23 +55,23 @@
+     }
+ 
+     @Test
+-    void createDefaultsToLocalBusinessWhenTypeNotSpecified() {
++    void createRejectsMissingBusinessTypeInsteadOfDefaulting() {
+         when(businessRepository.findByOwnerId(owner.getId())).thenReturn(Optional.empty());
+         CreateBusinessRequest req = new CreateBusinessRequest(
+                 "Thandi's Spaza", null, null, "Grocery", null, "Durban", null, null, null, null,
+                 null, null, null, null, null);
+ 
+-        BusinessResponse response = service.create(owner, req);
++        ApiException ex = assertThrows(ApiException.class, () -> service.create(owner, req));
+ 
+-        assertEquals(BusinessType.LOCAL_BUSINESS, response.businessType());
+-        assertTrue(response.fulfilmentOptions().isEmpty());
++        assertEquals(400, ex.getStatus().value());
++        verify(businessRepository, never()).save(any(Business.class));
+     }
+ 
+     @Test
+     void createDefaultsToCanSellToConsumersWhenCapabilitiesNotSpecified() {
+         when(businessRepository.findByOwnerId(owner.getId())).thenReturn(Optional.empty());
+         CreateBusinessRequest req = new CreateBusinessRequest(
+-                "Thandi's Spaza", null, null, "Grocery", null, "Durban", null, null, null, null,
++                "Thandi's Spaza", null, null, "Grocery", BusinessType.LOCAL_BUSINESS, "Durban", null, null, null, null,
+                 null, null, null, null, null);
+ 
+         BusinessResponse response = service.create(owner, req);
+@@ -81,7 +83,7 @@
+     void createHonoursExplicitCapabilities() {
+         when(businessRepository.findByOwnerId(owner.getId())).thenReturn(Optional.empty());
+         CreateBusinessRequest req = new CreateBusinessRequest(
+-                "Thandi's Spaza", null, null, "Grocery", null, "Durban", null, null, null, null,
++                "Thandi's Spaza", null, null, "Grocery", BusinessType.LOCAL_BUSINESS, "Durban", null, null, null, null,
+                 List.of(BusinessCapability.CAN_SELL_TO_CONSUMERS, BusinessCapability.CAN_BUY_STOCK),
+                 null, null, null, null);
+ 
+@@ -96,7 +98,7 @@
+     void createRejectsExplicitlyEmptyCapabilities() {
+         when(businessRepository.findByOwnerId(owner.getId())).thenReturn(Optional.empty());
+         CreateBusinessRequest req = new CreateBusinessRequest(
+-                "Thandi's Spaza", null, null, "Grocery", null, "Durban", null, null, null, null,
++                "Thandi's Spaza", null, null, "Grocery", BusinessType.LOCAL_BUSINESS, "Durban", null, null, null, null,
+                 List.of(), null, null, null, null);
+ 
+         assertThrows(ApiException.class, () -> service.create(owner, req));
+@@ -119,7 +121,7 @@
+     void createDefaultsToNotRegisteredWhenRegistrationNotSpecified() {
+         when(businessRepository.findByOwnerId(owner.getId())).thenReturn(Optional.empty());
+         CreateBusinessRequest req = new CreateBusinessRequest(
+-                "Thandi's Spaza", null, null, "Grocery", null, "Durban", null, null, null, null,
++                "Thandi's Spaza", null, null, "Grocery", BusinessType.LOCAL_BUSINESS, "Durban", null, null, null, null,
+                 null, null, null, null, null);
+ 
+         BusinessResponse response = service.create(owner, req);
+@@ -132,7 +134,7 @@
+     void createHonoursExplicitRegistrationDetails() {
+         when(businessRepository.findByOwnerId(owner.getId())).thenReturn(Optional.empty());
+         CreateBusinessRequest req = new CreateBusinessRequest(
+-                "Thandi's Spaza", null, null, "Grocery", null, "Durban", null, null, null, null, null,
++                "Thandi's Spaza", null, null, "Grocery", BusinessType.LOCAL_BUSINESS, "Durban", null, null, null, null, null,
+                 BusinessRegistrationStatus.FORMALLY_REGISTERED, "ENT2024/123456/07", null, null);
+ 
+         BusinessResponse response = service.create(owner, req);
+@@ -248,7 +250,7 @@
+     void createStoresMinimumOrderAmountAndDeliveryFeeWhenProvided() {
+         when(businessRepository.findByOwnerId(owner.getId())).thenReturn(Optional.empty());
+         CreateBusinessRequest req = new CreateBusinessRequest(
+-                "Thandi's Spaza", null, null, "Grocery", null, "Durban", null, null, null, null, null, null, null,
++                "Thandi's Spaza", null, null, "Grocery", BusinessType.LOCAL_BUSINESS, "Durban", null, null, null, null, null, null, null,
+                 new java.math.BigDecimal("100.00"), new java.math.BigDecimal("25.00"));
+ 
+         BusinessResponse response = service.create(owner, req);
+diff --git a/backend/src/test/java/com/momocircle/service/BusinessTypeValidationTest.java b/backend/src/test/java/com/momocircle/service/BusinessTypeValidationTest.java
+--- a/backend/src/test/java/com/momocircle/service/BusinessTypeValidationTest.java	1970-01-01 00:00:00.000000000 +0000
++++ b/backend/src/test/java/com/momocircle/service/BusinessTypeValidationTest.java	2026-10-26 10:01:42.265590908 +0000
+@@ -0,0 +1,92 @@
++package com.momocircle.service;
++
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.momocircle.domain.enums.BusinessType;
++import com.momocircle.dto.MarketDtos.CreateBusinessRequest;
++import com.momocircle.exception.GlobalExceptionHandler;
++import jakarta.validation.Validation;
++import jakarta.validation.Validator;
++import org.junit.jupiter.api.Test;
++import org.springframework.http.HttpInputMessage;
++import org.springframework.http.ResponseEntity;
++import org.springframework.http.converter.HttpMessageNotReadableException;
++
++import java.util.Map;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertNotNull;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.mockito.Mockito.mock;
++
++/**
++ * Task B (F-02): businessType is mandatory on POST /api/businesses. Covers bean validation (missing/null), JSON binding of
++ * unsupported identifiers through the real Jackson mapper + the global handler, and every valid identifier.
++ * Not executed in the authoring sandbox (no Maven) — see the phase report.
++ */
++class BusinessTypeValidationTest {
++
++    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
++    private final ObjectMapper mapper = new ObjectMapper();
++
++    private static final String BASE = "\"name\":\"Test\",\"category\":\"Groceries\"";
++
++    @Test
++    void nullTypeFailsValidationWithClearFieldMessage() {
++        var req = new CreateBusinessRequest("Test", null, null, "Groceries", null, null, null, null, null, null,
++                null, null, null, null, null);
++
++        var violations = validator.validate(req);
++
++        assertEquals(1, violations.size());
++        var v = violations.iterator().next();
++        assertEquals("businessType", v.getPropertyPath().toString());
++        assertEquals("Choose a business type", v.getMessage());
++    }
++
++    @Test
++    void missingKeyInJsonBecomesNullAndFailsValidation() throws Exception {
++        CreateBusinessRequest req = mapper.readValue("{" + BASE + "}", CreateBusinessRequest.class);
++        assertEquals(null, req.businessType());
++        assertEquals(1, validator.validate(req).size());
++    }
++
++    @Test
++    void explicitJsonNullFailsValidation() throws Exception {
++        CreateBusinessRequest req = mapper.readValue("{" + BASE + ",\"businessType\":null}", CreateBusinessRequest.class);
++        assertEquals(1, validator.validate(req).size());
++    }
++
++    @Test
++    void everySupportedTypeBindsAndValidates() throws Exception {
++        for (BusinessType t : BusinessType.values()) {
++            CreateBusinessRequest req = mapper.readValue(
++                    "{" + BASE + ",\"businessType\":\"" + t.name() + "\"}", CreateBusinessRequest.class);
++            assertEquals(t, req.businessType());
++            assertTrue(validator.validate(req).isEmpty(), t.name());
++        }
++    }
++
++    @Test
++    void unsupportedIdentifierIsRejectedByBindingAndHandlerExplainsAllowedValues() {
++        var bindFailure = assertThrows(com.fasterxml.jackson.databind.exc.InvalidFormatException.class,
++                () -> mapper.readValue("{" + BASE + ",\"businessType\":\"FOOD_TRUCK\"}", CreateBusinessRequest.class));
++
++        var notReadable = new HttpMessageNotReadableException("bad body", bindFailure, mock(HttpInputMessage.class));
++        ResponseEntity<Map<String, Object>> response = new GlobalExceptionHandler().handleUnreadableBody(notReadable);
++
++        assertEquals(400, response.getStatusCode().value());
++        Map<String, Object> body = response.getBody();
++        assertNotNull(body);
++        String serialized = body.toString();
++        assertTrue(serialized.contains("businessType"), serialized);
++        assertTrue(serialized.contains("RESTAURANT") && serialized.contains("SPAZA"), "lists allowed values: " + serialized);
++        assertTrue(!serialized.contains("FOOD_TRUCK"), "must not echo the submitted value");
++    }
++
++    @Test
++    void lowercaseIdentifierIsNotSilentlyAccepted() {
++        assertThrows(com.fasterxml.jackson.databind.exc.InvalidFormatException.class,
++                () -> mapper.readValue("{" + BASE + ",\"businessType\":\"restaurant\"}", CreateBusinessRequest.class));
++    }
++}
+diff --git a/backend/src/test/java/com/momocircle/service/PublicBusinessVisibilityTest.java b/backend/src/test/java/com/momocircle/service/PublicBusinessVisibilityTest.java
+--- a/backend/src/test/java/com/momocircle/service/PublicBusinessVisibilityTest.java	1970-01-01 00:00:00.000000000 +0000
++++ b/backend/src/test/java/com/momocircle/service/PublicBusinessVisibilityTest.java	2026-10-26 10:01:42.265573705 +0000
+@@ -0,0 +1,176 @@
++package com.momocircle.service;
++
++import com.fasterxml.jackson.databind.JsonNode;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
++import com.momocircle.domain.Business;
++import com.momocircle.domain.User;
++import com.momocircle.domain.enums.BusinessRegistrationStatus;
++import com.momocircle.domain.enums.BusinessType;
++import com.momocircle.domain.enums.PlatformRole;
++import com.momocircle.dto.MarketDtos.BusinessResponse;
++import com.momocircle.dto.MarketDtos.PublicBusinessResponse;
++import com.momocircle.exception.ApiException;
++import com.momocircle.repository.BusinessRepository;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.PageImpl;
++import org.springframework.data.domain.PageRequest;
++
++import java.util.List;
++import java.util.Optional;
++import java.util.Set;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertInstanceOf;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.mockito.Mockito.mock;
++import static org.mockito.Mockito.when;
++
++/**
++ * Task A (F-03): anonymous and non-owner callers get {@link PublicBusinessResponse}, which never carries the owner's identity or
++ * the registration details; the owner and admins keep the full {@link BusinessResponse}; inactive (deactivated/suspended)
++ * businesses are not exposed to anyone else.
++ *
++ * Uses a synthetic, obviously fake registration number. Not executed in the authoring sandbox (no Maven) — see the phase report.
++ */
++class PublicBusinessVisibilityTest {
++
++    private static final String FAKE_REG = "TEST-REG-0000/00";
++    private static final Set<String> PROTECTED_FIELDS =
++            Set.of("ownerId", "ownerName", "registrationNumber", "registrationStatus");
++
++    private BusinessRepository repo;
++    private BusinessService service;
++    private User owner;
++    private User stranger;
++    private User admin;
++    private Business business;
++
++    @BeforeEach
++    void setUp() {
++        repo = mock(BusinessRepository.class);
++        service = new BusinessService(repo);
++        owner = user("owner-1", "Owner One", PlatformRole.USER);
++        stranger = user("other-2", "Someone Else", PlatformRole.USER);
++        admin = user("admin-3", "Admin Three", PlatformRole.ADMIN);
++
++        business = new Business();
++        business.setId("biz-1");
++        business.setOwner(owner);
++        business.setName("Test Shop");
++        business.setCategory("Groceries");
++        business.setBusinessType(BusinessType.SPAZA);
++        business.setContactPhone("0820000000");
++        business.setRegistrationStatus(BusinessRegistrationStatus.FORMALLY_REGISTERED);
++        business.setRegistrationNumber(FAKE_REG);
++        when(repo.findById("biz-1")).thenReturn(Optional.of(business));
++    }
++
++    private static User user(String id, String name, PlatformRole role) {
++        User u = new User();
++        u.setId(id);
++        u.setFullName(name);
++        u.setRole(role);
++        return u;
++    }
++
++    private static JsonNode json(Object o) {
++        ObjectMapper m = new ObjectMapper().registerModule(new JavaTimeModule());
++        return m.valueToTree(o);
++    }
++
++    @Test
++    void anonymousCallerGetsPublicDtoWithoutProtectedFields() {
++        Object result = service.getForViewer("biz-1", null);
++
++        assertInstanceOf(PublicBusinessResponse.class, result);
++        JsonNode node = json(result);
++        for (String f : PROTECTED_FIELDS) {
++            assertFalse(node.has(f), "anonymous response must not serialize " + f);
++        }
++        assertFalse(node.toString().contains(FAKE_REG), "registration number must not appear anywhere in the payload");
++        // storefront fields the web needs are still present
++        assertEquals("Test Shop", node.get("name").asText());
++        assertEquals("SPAZA", node.get("businessType").asText());
++        assertEquals("0820000000", node.get("contactPhone").asText());
++        assertTrue(node.has("fulfilmentOptions"));
++        assertTrue(node.has("minimumOrderAmount"));
++    }
++
++    @Test
++    void publicDtoComponentsNeverIncludeProtectedFields() {
++        for (var component : PublicBusinessResponse.class.getRecordComponents()) {
++            assertFalse(PROTECTED_FIELDS.contains(component.getName()), component.getName());
++        }
++    }
++
++    @Test
++    void otherSignedInUserAlsoGetsPublicDto() {
++        assertInstanceOf(PublicBusinessResponse.class, service.getForViewer("biz-1", stranger));
++    }
++
++    @Test
++    void ownerKeepsFullResponseIncludingRegistrationDetails() {
++        Object result = service.getForViewer("biz-1", owner);
++
++        assertInstanceOf(BusinessResponse.class, result);
++        JsonNode node = json(result);
++        assertEquals("owner-1", node.get("ownerId").asText());
++        assertEquals(FAKE_REG, node.get("registrationNumber").asText());
++        assertEquals("FORMALLY_REGISTERED", node.get("registrationStatus").asText());
++    }
++
++    @Test
++    void adminGetsFullResponse() {
++        assertInstanceOf(BusinessResponse.class, service.getForViewer("biz-1", admin));
++    }
++
++    @Test
++    void inactiveBusinessIsNotFoundForAnonymousAndStrangers() {
++        business.setActive(false);
++
++        ApiException anon = assertThrows(ApiException.class, () -> service.getForViewer("biz-1", null));
++        ApiException other = assertThrows(ApiException.class, () -> service.getForViewer("biz-1", stranger));
++        assertEquals(404, anon.getStatus().value());
++        assertEquals(404, other.getStatus().value());
++    }
++
++    @Test
++    void inactiveBusinessRemainsVisibleToOwnerAndAdmin() {
++        business.setActive(false);
++
++        assertInstanceOf(BusinessResponse.class, service.getForViewer("biz-1", owner));
++        assertInstanceOf(BusinessResponse.class, service.getForViewer("biz-1", admin));
++    }
++
++    @Test
++    void missingBusinessIsNotFound() {
++        when(repo.findById("nope")).thenReturn(Optional.empty());
++        assertEquals(404, assertThrows(ApiException.class, () -> service.getForViewer("nope", null)).getStatus().value());
++    }
++
++    @Test
++    void browseReturnsPublicDtosOnly() {
++        when(repo.findByActiveTrue(PageRequest.of(0, 20))).thenReturn(new PageImpl<>(List.of(business)));
++
++        Page<PublicBusinessResponse> page = service.browse(null, null, null, PageRequest.of(0, 20));
++
++        assertEquals(1, page.getTotalElements());
++        JsonNode node = json(page.getContent().get(0));
++        for (String f : PROTECTED_FIELDS) {
++            assertFalse(node.has(f), f);
++        }
++    }
++
++    @Test
++    void browseUsesOnlyActiveOnlyRepositoryQueries() {
++        // The service must never fall back to an unfiltered findAll for public browsing.
++        when(repo.findByActiveTrue(PageRequest.of(0, 20))).thenReturn(new PageImpl<>(List.of()));
++        service.browse(null, null, null, PageRequest.of(0, 20));
++        org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).findAll(org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class));
++    }
++}
+diff --git a/frontend/src/components/market/BusinessCard.tsx b/frontend/src/components/market/BusinessCard.tsx
+--- a/frontend/src/components/market/BusinessCard.tsx	2026-10-26 10:01:42.257257886 +0000
++++ b/frontend/src/components/market/BusinessCard.tsx	2026-10-26 10:01:42.281384533 +0000
+@@ -1,5 +1,5 @@
+ import { Link } from "react-router-dom"
+-import type { Business } from "../../lib/types"
++import type { PublicBusiness } from "../../lib/types"
+ import { BUSINESS_TYPE_LABELS } from "../../lib/types"
+ import { StarRating } from "./StarRating"
+ 
+@@ -9,7 +9,7 @@
+   CUSTOMER_PICKUP: "Pickup",
+ }
+ 
+-export function BusinessCard({ business }: { business: Business }) {
++export function BusinessCard({ business }: { business: PublicBusiness }) {
+   const deliveryOptions = business.fulfilmentOptions
+     .filter((o) => DELIVERY_BADGE[o])
+     .slice(0, 2) // cap at 2 so the card stays compact
+diff --git a/frontend/src/components/market/CreateBusinessModal.tsx b/frontend/src/components/market/CreateBusinessModal.tsx
+--- a/frontend/src/components/market/CreateBusinessModal.tsx	2026-10-26 10:01:42.257426700 +0000
++++ b/frontend/src/components/market/CreateBusinessModal.tsx	2026-10-26 10:01:42.281623229 +0000
+@@ -50,12 +50,12 @@
+   const [step, setStep] = useState(0)
+   const [name, setName] = useState("")
+   const [category, setCategory] = useState("")
+-  const [businessType, setBusinessType] = useState<BusinessType>("LOCAL_BUSINESS")
++  const [businessType, setBusinessType] = useState<BusinessType | null>(null)
+   const [description, setDescription] = useState("")
+   const [location, setLocation] = useState("")
+   const [contactPhone, setContactPhone] = useState("")
+   const [fulfilmentOptions, setFulfilmentOptions] = useState<FulfilmentOption[]>(["CUSTOMER_PICKUP"])
+-  const [capabilities, setCapabilities] = useState<BusinessCapability[]>(DEFAULT_CAPABILITIES.LOCAL_BUSINESS)
++  const [capabilities, setCapabilities] = useState<BusinessCapability[]>([])
+   const [registrationStatus, setRegistrationStatus] = useState<BusinessRegistrationStatus>("NOT_REGISTERED")
+   const [registrationNumber, setRegistrationNumber] = useState("")
+   const [error, setError] = useState<string | null>(null)
+@@ -75,7 +75,7 @@
+   /** The same rules and payload as the mobile setup screen (lib/businessSetup.ts). */
+   function draft(): BusinessDraft {
+     return {
+-      businessType: businessType as BusinessTypeId, name, category, description, location, contactPhone,
++      businessType: (businessType ?? "") as BusinessTypeId | "", name, category, description, location, contactPhone,
+       capabilities: capabilities as CapabilityId[], fulfilmentOptions: fulfilmentOptions as FulfilmentId[],
+       registrationStatus: registrationStatus as RegistrationId, registrationNumber,
+     }
+@@ -179,7 +179,7 @@
+             ? <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+             : <button type="button" className="btn btn-ghost" onClick={() => setStep((s) => s - 1)}>Back</button>}
+           {step < 2
+-            ? <button type="button" className="btn btn-primary" onClick={next}>Next</button>
++            ? <button type="button" className="btn btn-primary" onClick={next} disabled={step === 0 && !businessType}>Next</button>
+             : <button className="btn btn-primary" disabled={busy}>{busy ? "Creating…" : "Create my PULA Business"}</button>}
+         </div>
+       </form>
+diff --git a/frontend/src/lib/businessSetup.ts b/frontend/src/lib/businessSetup.ts
+--- a/frontend/src/lib/businessSetup.ts	2026-10-26 10:01:42.257894124 +0000
++++ b/frontend/src/lib/businessSetup.ts	2026-10-26 10:01:42.282001119 +0000
+@@ -66,7 +66,8 @@
+ };
+ 
+ export interface BusinessDraft {
+-  businessType: BusinessTypeId;
++  /** '' = the owner has not chosen yet. There is deliberately no default type: the owner must pick one. */
++  businessType: BusinessTypeId | '';
+   name: string;
+   category: string;
+   description: string;
+@@ -78,10 +79,10 @@
+   registrationNumber: string;
+ }
+ 
+-export function emptyDraft(type: BusinessTypeId = 'LOCAL_BUSINESS'): BusinessDraft {
++export function emptyDraft(type: BusinessTypeId | '' = ''): BusinessDraft {
+   return {
+     businessType: type, name: '', category: '', description: '', location: '', contactPhone: '',
+-    capabilities: [...DEFAULT_CAPABILITIES[type]], fulfilmentOptions: ['CUSTOMER_PICKUP'],
++    capabilities: type ? [...DEFAULT_CAPABILITIES[type]] : [], fulfilmentOptions: ['CUSTOMER_PICKUP'],
+     registrationStatus: 'NOT_REGISTERED', registrationNumber: '',
+   };
+ }
+@@ -166,7 +167,13 @@
+  * The exact body for POST /api/businesses. Empty optional fields are omitted, a registration number is sent ONLY when the owner
+  * says they are registered or registering, and fulfilment is sent only for businesses that sell to customers.
+  */
++export function isBusinessTypeId(v: string): v is BusinessTypeId {
++  return TYPE_CHOICES.some((t) => t.value === v);
++}
++
+ export function toPayload(d: BusinessDraft): CreateBusinessPayload {
++  // Never build a request without an explicitly chosen, supported type (the server also rejects it).
++  if (!isBusinessTypeId(d.businessType)) throw new Error('Choose the kind of business you run');
+   const phone = d.contactPhone.trim() ? normalisePhone(d.contactPhone) : null;
+   const sells = d.capabilities.includes('CAN_SELL_TO_CONSUMERS');
+   const number = d.registrationStatus === 'NOT_REGISTERED' ? '' : d.registrationNumber.trim();
+diff --git a/frontend/src/lib/types.ts b/frontend/src/lib/types.ts
+--- a/frontend/src/lib/types.ts	2026-10-26 10:01:42.258275048 +0000
++++ b/frontend/src/lib/types.ts	2026-10-26 10:01:42.282378925 +0000
+@@ -494,6 +494,12 @@
+   createdAt: string
+ }
+ 
++/**
++ * PublicBusinessResponse: what GET /api/businesses and GET /api/businesses/{id} return to anyone who is not the owner or an
++ * admin. No owner identity and no registration details. The owner's full record (Business) comes from /businesses/me.
++ */
++export type PublicBusiness = Omit<Business, "ownerId" | "ownerName" | "registrationStatus" | "registrationNumber">
++
+ export interface CreateBusinessRequest {
+   name: string
+   description?: string | null
+diff --git a/frontend/src/pages/market/BusinessProfilePage.tsx b/frontend/src/pages/market/BusinessProfilePage.tsx
+--- a/frontend/src/pages/market/BusinessProfilePage.tsx	2026-10-26 10:01:42.259375964 +0000
++++ b/frontend/src/pages/market/BusinessProfilePage.tsx	2026-10-26 10:01:42.283410100 +0000
+@@ -1,7 +1,7 @@
+ import { useCallback, useEffect, useState } from "react"
+ import { useParams } from "react-router-dom"
+ import { api } from "../../lib/api"
+-import type { Business, Order, Page, Product } from "../../lib/types"
++import type { PublicBusiness, Order, Page, Product } from "../../lib/types"
+ import { FULFILMENT_OPTION_LABELS } from "../../lib/types"
+ import { ProductCard } from "../../components/market/ProductCard"
+ import { PublicBranchDirectory } from "../../components/branch/PublicBranchDirectory"
+@@ -12,14 +12,14 @@
+ 
+ export function BusinessProfilePage() {
+   const { id } = useParams<{ id: string }>()
+-  const [business, setBusiness] = useState<Business | null>(null)
++  const [business, setBusiness] = useState<PublicBusiness | null>(null)
+   const [products, setProducts] = useState<Product[] | null>(null)
+   const [eligibleOrderId, setEligibleOrderId] = useState<string | null>(null)
+   const [error, setError] = useState<string | null>(null)
+ 
+   const load = useCallback(() => {
+     if (!id) return
+-    api.get<Business>(`/businesses/${id}`).then(setBusiness).catch((e) => setError(e.message))
++    api.get<PublicBusiness>(`/businesses/${id}`).then(setBusiness).catch((e) => setError(e.message))
+     api
+       .get<Page<Product>>(`/businesses/${id}/products?size=50`)
+       .then((page) => setProducts(page.content))
+diff --git a/frontend/src/pages/market/MarketHomePage.tsx b/frontend/src/pages/market/MarketHomePage.tsx
+--- a/frontend/src/pages/market/MarketHomePage.tsx	2026-10-26 10:01:42.259169055 +0000
++++ b/frontend/src/pages/market/MarketHomePage.tsx	2026-10-26 10:01:42.283212174 +0000
+@@ -3,7 +3,7 @@
+ import { Link } from "react-router-dom"
+ import { Search, SlidersHorizontal, X } from "lucide-react"
+ import { api } from "../../lib/api"
+-import type { Business, Page, Product } from "../../lib/types"
++import type { PublicBusiness, Page, Product } from "../../lib/types"
+ import { ProductCard } from "../../components/market/ProductCard"
+ import { BusinessCard } from "../../components/market/BusinessCard"
+ import { PageHeader } from "../../components/ui/PageHeader"
+@@ -25,7 +25,7 @@
+   const [showPriceFilter, setShowPriceFilter] = useState(false)
+   const [categories, setCategories] = useState<string[]>([])
+   const [page, setPage] = useState<Page<Product> | null>(null)
+-  const [businessPage, setBusinessPage] = useState<Page<Business> | null>(null)
++  const [businessPage, setBusinessPage] = useState<Page<PublicBusiness> | null>(null)
+   const [pageNum, setPageNum] = useState(0)
+   const [loading, setLoading] = useState(false)
+   const [error, setError] = useState<string | null>(null)
+@@ -71,7 +71,7 @@
+       if (category) params.set("category", category)
+ 
+       api
+-        .get<Page<Business>>(`/businesses?${params.toString()}`)
++        .get<Page<PublicBusiness>>(`/businesses?${params.toString()}`)
+         .then((result) => {
+           setBusinessPage((prev) => replace || !prev ? result : { ...result, content: [...prev.content, ...result.content] })
+           setError(null)
+diff --git a/frontend/tests/businessSetup.test.ts b/frontend/tests/businessSetup.test.ts
+--- a/frontend/tests/businessSetup.test.ts	2026-10-26 10:01:42.261558107 +0000
++++ b/frontend/tests/businessSetup.test.ts	2026-10-26 10:01:42.285207720 +0000
+@@ -95,3 +95,52 @@
+   assert.match(REGISTRATION_DISCLAIMER, /does not check registration numbers/);
+   assert.doesNotMatch(REGISTRATION_DISCLAIMER, /verified by PULA|we verify/i);
+ });
++
++// ---- Phase 1 (F-02): the business type must be chosen explicitly; there is no default ----
++
++import { readFileSync } from 'node:fs';
++import { isBusinessTypeId } from '../src/lib/businessSetup.ts';
++
++test('a fresh draft has NO business type and no preselected capabilities', () => {
++  const d = emptyDraft();
++  assert.equal(d.businessType, '');
++  assert.deepEqual(d.capabilities, []);
++});
++
++test('the type step cannot be passed without a deliberate, valid choice', () => {
++  assert.ok(validateStep(0, emptyDraft()).businessType, 'unselected type is an error');
++  assert.ok(validateStep(0, { ...emptyDraft(), businessType: 'NOT_A_TYPE' as never }).businessType, 'unknown type is an error');
++  const bad = validateAll({ ...emptyDraft(), name: 'Thandi', category: 'Groceries' });
++  assert.equal(bad?.step, 0, 'validation sends the owner back to the type step');
++});
++
++test('toPayload refuses to build a request without a supported type', () => {
++  assert.throws(() => toPayload({ ...emptyDraft(), name: 'Thandi', category: 'Groceries' }));
++  assert.throws(() => toPayload({ ...emptyDraft(), businessType: 'FOOD_TRUCK' as never, name: 'Thandi', category: 'Groceries' }));
++});
++
++test('every offered type is submitted as exactly itself, and nothing else becomes LOCAL_BUSINESS', () => {
++  for (const t of TYPE_CHOICES) {
++    const picked = withType({ ...emptyDraft(), name: 'Thandi', category: 'Groceries' }, t.value);
++    assert.equal(validateAll(picked), null, t.value);
++    assert.equal(toPayload(picked).businessType, t.value, t.value);
++    assert.ok(isBusinessTypeId(t.value));
++  }
++  assert.equal(isBusinessTypeId(''), false);
++  assert.equal(isBusinessTypeId('local_business'), false);
++});
++
++test('the web wizard source has no implicit type and gates Next on a chosen type', () => {
++  const src = readFileSync(new URL('../src/components/market/CreateBusinessModal.tsx', import.meta.url), 'utf8');
++  assert.ok(/useState<BusinessType \| null>\(null\)/.test(src), 'type state starts unselected');
++  assert.ok(!/useState<BusinessType>\("LOCAL_BUSINESS"\)/.test(src), 'no preselected LOCAL_BUSINESS');
++  assert.ok(/disabled=\{step === 0 && !businessType\}/.test(src), 'Next is disabled until a type is chosen');
++});
++
++test('public business consumers use the public shape (no owner or registration fields)', () => {
++  for (const f of ['pages/market/BusinessProfilePage.tsx', 'pages/market/MarketHomePage.tsx', 'components/market/BusinessCard.tsx']) {
++    const src = readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
++    assert.ok(src.includes('PublicBusiness'), f);
++    assert.ok(!/\b(ownerId|ownerName|registrationNumber|registrationStatus)\b/.test(src), `${f} must not read protected fields`);
++  }
++});

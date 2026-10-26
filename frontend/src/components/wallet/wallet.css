@@ -1,0 +1,28 @@
+/* PULA Money demo wallet. Reuses the app's tokens (.card, .field, .btn, .badge); only wallet-specific layout lives here. */
+.wallet-banner { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; margin: 0 0 14px; border-radius: 10px;
+  background: #fff7e0; color: #5c4400; border: 1px solid #f0d58a; font-size: 0.9rem; }
+.wallet-banner svg { flex: none; margin-top: 2px; }
+.wallet-balance { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
+.wallet-balance-label { font-size: 0.85rem; opacity: 0.75; }
+.wallet-balance-amount { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; }
+.wallet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.wallet-inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.wallet-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
+.wallet-tab { background: none; border: 0; padding: 8px 12px; cursor: pointer; font: inherit; border-bottom: 2px solid transparent; }
+.wallet-tab.is-active { border-bottom-color: currentColor; font-weight: 600; }
+.wallet-tab:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.wallet-stack { display: grid; gap: 16px; }
+.wallet-list { list-style: none; margin: 0; padding: 0; }
+.wallet-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
+.wallet-row-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; text-align: right; }
+.wallet-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0; font-size: 0.85rem; }
+.wallet-filters select { margin-left: 4px; }
+.wallet-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
+.wallet-result { padding: 10px 14px; border-radius: 10px; margin: 10px 0; }
+.wallet-result.success { background: #e8f6ee; color: #14532d; }
+.wallet-recipient { margin: 8px 0; }
+.wallet-qr { display: block; margin: 12px auto; image-rendering: pixelated; background: #fff; padding: 8px; border-radius: 8px; }
+.wallet-code { word-break: break-all; font-size: 0.8rem; }
+.wallet-scanner video { width: 100%; max-width: 360px; border-radius: 10px; background: #000; }
+.wallet-review { margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(0, 0, 0, 0.2); }
+@media (max-width: 520px) { .wallet-row { flex-direction: column; } .wallet-row-end { justify-content: flex-start; text-align: left; } }

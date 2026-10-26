@@ -1,0 +1,3 @@
+package com.momocircle.repository.momoride;
+import com.momocircle.domain.momoride.Taxi; import org.springframework.data.jpa.repository.JpaRepository; import org.springframework.data.domain.Page; import org.springframework.data.domain.Pageable; import java.util.*;
+public interface TaxiRepository extends JpaRepository<Taxi,String>{Optional<Taxi> findByPaymentCode(String code); Optional<Taxi> findByPublicTaxiId(String id); Optional<Taxi> findByQrToken(String token); List<Taxi> findByDriverIdOrderByCreatedAtDesc(String driverId); boolean existsByRegistrationNumber(String n); boolean existsByQrToken(String t); Page<Taxi> findAllByOrderByCreatedAtDesc(Pageable pageable);}

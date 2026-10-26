@@ -1,0 +1,38 @@
+# Copy to .github/workflows/ (adjust paths to your repository layout). Runs the Phase 9A acceptance gate on a runner that
+# has Docker, so the Testcontainers PostgreSQL suites really execute. The gate FAILS on skipped, missing or zero-test classes.
+name: phase9a-verification
+on: [pull_request, workflow_dispatch]
+jobs:
+  backend:
+    runs-on: ubuntu-latest            # Docker is available on GitHub-hosted Ubuntu runners
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17', cache: maven }
+      - name: Compile
+        run: mvn -B -f backend-web/backend/pom.xml -DskipTests compile
+      - name: Full test suite (includes H2 + Testcontainers PostgreSQL ledger tests)
+        run: mvn -B -f backend-web/backend/pom.xml test
+      - name: Package
+        run: mvn -B -f backend-web/backend/pom.xml -DskipTests package
+      - name: Phase 9A gate (fails on skipped / missing / zero-test required classes)
+        if: always()
+        run: python3 backend-web/ci/verify_phase9a.py --backend backend-web/backend --markdown "$GITHUB_STEP_SUMMARY"
+      - name: Keep reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: surefire-reports, path: backend-web/backend/target/surefire-reports }
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: cd backend-web/frontend && npm ci && npm run build && node --test tests/*.test.ts
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: cd mobile/mobile && npm ci && npx tsc --noEmit && node --test tests/attemptKey.test.mjs

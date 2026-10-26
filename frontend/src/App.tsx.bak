@@ -1,0 +1,137 @@
+import { SplitBillsPage } from "./pages/SplitBillsPage"
+import { Navigate, Route, Routes } from "react-router-dom"
+import { useAuth } from "./context/AuthContext"
+import { AuthPage } from "./pages/AuthPage"
+import { DashboardPage } from "./pages/DashboardPage"
+import { CircleDetailPage } from "./pages/CircleDetailPage"
+import { StokvelPage } from "./pages/StokvelPage"
+import { SaveToBuyPage } from "./pages/SaveToBuyPage"
+import { ServicesPage } from "./pages/services/ServicesPage"
+import { ProviderServicesPage } from "./pages/services/ProviderServicesPage"
+import { AdminServicesPage } from "./pages/services/AdminServicesPage"
+import { AdminMarketplaceFinancePage } from "./pages/AdminMarketplaceFinancePage"
+import { SellerSettlementsPage } from "./pages/SellerSettlementsPage"
+import { NotificationsPage } from "./pages/NotificationsPage"
+import { MarketHomePage } from "./pages/market/MarketHomePage"
+import { BasketComparePage } from "./pages/market/BasketComparePage"
+import { BusinessProfilePage } from "./pages/market/BusinessProfilePage"
+import { ProductDetailPage } from "./pages/market/ProductDetailPage"
+import { CartPage } from "./pages/market/CartPage"
+import { OrdersPage } from "./pages/market/OrdersPage"
+import { OrderDetailPage } from "./pages/market/OrderDetailPage"
+import { SellerDashboardPage } from "./pages/market/SellerDashboardPage"
+import { BusinessBranchesPage } from "./pages/market/BusinessBranchesPage"
+import { BranchDetailPage } from "./pages/market/BranchDetailPage"
+import { BranchReportPage } from "./pages/market/BranchReportPage"
+import StockMarketPage from "./pages/market/StockMarketPage"
+import StockOrdersPage from "./pages/market/StockOrdersPage"
+import StockCataloguePage from "./pages/market/StockCataloguePage"
+import BulkBuyPage from "./pages/market/BulkBuyPage"
+import BulkGroupPage from "./pages/market/BulkGroupPage"
+import FundingReadinessPage from "./pages/FundingReadinessPage"
+import DriverPoolPage from "./pages/market/DriverPoolPage"
+import CashFlowPage from "./pages/CashFlowPage"
+import FuturePage from "./pages/FuturePage"
+import { FoodPage } from "./pages/market/food/FoodPage"
+import { RestaurantPage } from "./pages/market/food/RestaurantPage"
+import { FoodComparePage } from "./pages/market/food/FoodComparePage"
+import { FoodMerchantPage } from "./pages/market/food/FoodMerchantPage"
+import { AppLayout } from "./components/AppLayout"
+import { MoMoRidePage } from "./pages/momoride/MoMoRidePage"
+import { MoneyPage } from "./pages/MoneyPage"
+import { DiscoverStokvelsPage } from "./pages/DiscoverStokvelsPage"
+import { JoinStokvelPage } from "./pages/JoinStokvelPage"
+import { BusinessWalletPage, BusinessWalletsPage, WalletPage } from "./pages/WalletPage"
+import { AdminWalletPage } from "./pages/AdminWalletPage"
+import HelpPage from "./pages/HelpPage"
+import ProfilePage from "./pages/ProfilePage"
+import RefundsPage from "./pages/RefundsPage"
+import RideHistoryPage from "./pages/RideHistoryPage"
+import { NotFoundPage } from "./pages/NotFoundPage"
+import AdminHubPage from "./pages/admin/AdminHubPage"
+import AdminUsersPage from "./pages/admin/AdminUsersPage"
+import { RequireAdmin } from "./pages/admin/RequireAdmin"
+import BusinessTeamPage from "./pages/market/BusinessTeamPage"
+import BusinessSettingsPage from "./pages/market/BusinessSettingsPage"
+
+export function App() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="app-loading" role="status" aria-live="polite">
+        <div className="spinner" aria-hidden="true" />
+        <span>Loading PULA…</span>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/auth" element={<AuthPage />} />
+        <Route path="*" element={<Navigate to="/auth" replace />} />
+      </Routes>
+    )
+  }
+
+  return (
+    <AppLayout>
+      <Routes>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/circles/:id" element={<CircleDetailPage />} />
+        <Route path="/stokvels/discover" element={<DiscoverStokvelsPage />} />
+        <Route path="/stokvels/join" element={<JoinStokvelPage />} />
+        <Route path="/stokvels/:id" element={<StokvelPage />} />
+        <Route path="/save-to-buy" element={<SaveToBuyPage />} />
+        <Route path="/services" element={<ServicesPage />} />
+        <Route path="/services/provider" element={<ProviderServicesPage />} />
+        <Route path="/help" element={<HelpPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/refunds" element={<RefundsPage />} />
+        <Route path="/momoride/history" element={<RideHistoryPage />} />
+        <Route path="/admin" element={<RequireAdmin><AdminHubPage /></RequireAdmin>} />
+        <Route path="/admin/users" element={<RequireAdmin><AdminUsersPage /></RequireAdmin>} />
+        <Route path="/sell/team" element={<BusinessTeamPage />} />
+        <Route path="/sell/settings" element={<BusinessSettingsPage />} />
+        <Route path="/admin/services" element={<AdminServicesPage />} />
+        <Route path="/admin/marketplace" element={<AdminMarketplaceFinancePage />} />
+        <Route path="/admin/wallet" element={<AdminWalletPage />} />
+        <Route path="/sell/settlements" element={<SellerSettlementsPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/momoride" element={<MoMoRidePage />} />
+        <Route path="/cashflow" element={<CashFlowPage />} />
+        <Route path="/future" element={<FuturePage />} />
+        <Route path="/funding" element={<FundingReadinessPage />} />
+        <Route path="/market/stock/pool" element={<DriverPoolPage />} />
+        <Route path="/money" element={<MoneyPage />} />
+        <Route path="/split-bills" element={<SplitBillsPage />} />
+        <Route path="/money/wallet" element={<WalletPage />} />
+        <Route path="/money/wallet/business" element={<BusinessWalletsPage />} />
+        <Route path="/money/wallet/business/:walletId" element={<BusinessWalletPage />} />
+        <Route path="/market" element={<MarketHomePage />} />
+        <Route path="/market/stock" element={<StockMarketPage />} />
+        <Route path="/market/stock/orders" element={<StockOrdersPage />} />
+        <Route path="/market/stock/catalogue" element={<StockCataloguePage />} />
+        <Route path="/market/stock/bulk" element={<BulkBuyPage />} />
+        <Route path="/market/stock/bulk/:id" element={<BulkGroupPage />} />
+        <Route path="/market/compare-basket" element={<BasketComparePage />} />
+        <Route path="/market/businesses/:id" element={<BusinessProfilePage />} />
+        <Route path="/market/products/:id" element={<ProductDetailPage />} />
+        <Route path="/market/food" element={<FoodPage />} />
+        <Route path="/market/restaurants/:id" element={<RestaurantPage />} />
+        <Route path="/market/food/compare/canonical/:id" element={<FoodComparePage mode="canonical" />} />
+        <Route path="/market/food/compare/item/:id" element={<FoodComparePage mode="item" />} />
+        <Route path="/sell/food" element={<FoodMerchantPage />} />
+        <Route path="/cart" element={<CartPage />} />
+        <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/orders/:id" element={<OrderDetailPage />} />
+        <Route path="/sell" element={<SellerDashboardPage />} />
+        <Route path="/sell/branches" element={<BusinessBranchesPage />} />
+        <Route path="/sell/branches/report" element={<BranchReportPage />} />
+        <Route path="/sell/branches/:businessId/:branchId" element={<BranchDetailPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </AppLayout>
+  )
+}

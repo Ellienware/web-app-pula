@@ -1,0 +1,189 @@
+package com.momocircle.service;
+
+import com.momocircle.domain.Business;
+import com.momocircle.domain.User;
+import com.momocircle.domain.enums.BusinessCapability;
+import com.momocircle.domain.enums.PlatformRole;
+import com.momocircle.dto.MarketDtos.BusinessResponse;
+import com.momocircle.dto.MarketDtos.PublicBusinessResponse;
+import com.momocircle.dto.MarketDtos.CreateBusinessRequest;
+import com.momocircle.dto.MarketDtos.UpdateBusinessRequest;
+import com.momocircle.exception.ApiException;
+import com.momocircle.repository.BusinessRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class BusinessService {
+
+    private final BusinessRepository businessRepository;
+
+    public BusinessService(BusinessRepository businessRepository) {
+        this.businessRepository = businessRepository;
+    }
+
+    @Transactional
+    public BusinessResponse create(User owner, CreateBusinessRequest req) {
+        if (businessRepository.findByOwnerId(owner.getId()).isPresent()) {
+            throw ApiException.conflict("You already have a business profile");
+        }
+        Business business = new Business();
+        business.setOwner(owner);
+        business.setName(req.name().trim());
+        business.setDescription(req.description());
+        business.setLogoUrl(req.logoUrl());
+        business.setCategory(req.category());
+        // No implicit default: a missing type is a client error, never a silent LOCAL_BUSINESS.
+        // (The controller's @Valid rejects null first; this guards direct service callers.)
+        if (req.businessType() == null) {
+            throw ApiException.badRequest("Choose a business type");
+        }
+        business.setBusinessType(req.businessType());
+        business.setLocation(req.location());
+        business.setContactPhone(req.contactPhone());
+        business.setContactEmail(req.contactEmail());
+        if (req.operatingHours() != null) {
+            business.setOperatingHours(req.operatingHours());
+        }
+        if (req.fulfilmentOptions() != null) {
+            business.setFulfilmentOptions(new java.util.LinkedHashSet<>(req.fulfilmentOptions()));
+        }
+        if (req.capabilities() != null) {
+            if (req.capabilities().isEmpty()) {
+                throw ApiException.badRequest("A business needs at least one capability");
+            }
+            business.setCapabilities(new java.util.LinkedHashSet<>(req.capabilities()));
+        }
+        if (req.registrationStatus() != null) {
+            business.setRegistrationStatus(req.registrationStatus());
+        }
+        if (req.registrationNumber() != null) {
+            business.setRegistrationNumber(req.registrationNumber().isBlank() ? null : req.registrationNumber().trim());
+        }
+        business.setMinimumOrderAmount(req.minimumOrderAmount());
+        business.setDeliveryFee(req.deliveryFee());
+        return toResponse(businessRepository.save(business));
+    }
+
+    @Transactional
+    public BusinessResponse update(User owner, UpdateBusinessRequest req) {
+        Business business = requireOwn(owner);
+        if (req.name() != null) business.setName(req.name().trim());
+        if (req.description() != null) business.setDescription(req.description());
+        if (req.logoUrl() != null) business.setLogoUrl(req.logoUrl());
+        if (req.category() != null) business.setCategory(req.category());
+        // Business type is established at onboarding and cannot be changed through profile updates.
+        if (req.businessType() != null && req.businessType() != business.getBusinessType()) {
+            throw ApiException.badRequest("Business type cannot be changed through profile updates");
+        }
+        if (req.location() != null) business.setLocation(req.location());
+        if (req.contactPhone() != null) business.setContactPhone(req.contactPhone());
+        if (req.contactEmail() != null) business.setContactEmail(req.contactEmail());
+        if (req.operatingHours() != null) business.setOperatingHours(req.operatingHours());
+        if (req.fulfilmentOptions() != null) {
+            business.setFulfilmentOptions(new java.util.LinkedHashSet<>(req.fulfilmentOptions()));
+        }
+        if (req.capabilities() != null) {
+            if (req.capabilities().isEmpty()) {
+                throw ApiException.badRequest("A business needs at least one capability");
+            }
+            business.setCapabilities(new java.util.LinkedHashSet<>(req.capabilities()));
+        }
+        if (req.registrationStatus() != null) {
+            business.setRegistrationStatus(req.registrationStatus());
+        }
+        if (req.registrationNumber() != null) {
+            business.setRegistrationNumber(req.registrationNumber().isBlank() ? null : req.registrationNumber().trim());
+        }
+        if (req.active() != null) business.setActive(req.active());
+        if (req.minimumOrderAmount() != null) business.setMinimumOrderAmount(req.minimumOrderAmount());
+        if (req.deliveryFee() != null) business.setDeliveryFee(req.deliveryFee());
+        return toResponse(businessRepository.save(business));
+    }
+
+    @Transactional(readOnly = true)
+    public BusinessResponse myBusiness(User owner) {
+        return toResponse(requireOwn(owner));
+    }
+
+    /**
+     * Single business as seen by {@code viewer} (null = anonymous). The owner and admins get the full {@link BusinessResponse}
+     * (including inactive businesses). Everyone else gets {@link PublicBusinessResponse}, and an inactive (deactivated or
+     * suspended) business is reported as not found so its existence is not disclosed.
+     */
+    @Transactional(readOnly = true)
+    public Object getForViewer(String businessId, User viewer) {
+        Business b = requireById(businessId);
+        boolean privileged = viewer != null
+                && (viewer.getRole() == PlatformRole.ADMIN || b.getOwner().getId().equals(viewer.getId()));
+        if (privileged) {
+            return toResponse(b);
+        }
+        if (!b.isActive()) {
+            throw ApiException.notFound("Business not found");
+        }
+        return toPublicResponse(b);
+    }
+
+    /** Public browse. Every repository query used here already filters {@code active = true}. */
+    @Transactional(readOnly = true)
+    public Page<PublicBusinessResponse> browse(String category, com.momocircle.domain.enums.BusinessType businessType,
+                                                BusinessCapability capability, Pageable pageable) {
+        boolean hasCategory = category != null && !category.isBlank();
+        Page<Business> page;
+        if (capability != null && hasCategory) {
+            page = businessRepository.findByActiveTrueAndCategoryAndCapabilitiesContaining(category, capability, pageable);
+        } else if (capability != null) {
+            page = businessRepository.findByActiveTrueAndCapabilitiesContaining(capability, pageable);
+        } else if (hasCategory && businessType != null) {
+            page = businessRepository.findByActiveTrueAndCategoryAndBusinessType(category, businessType, pageable);
+        } else if (hasCategory) {
+            page = businessRepository.findByActiveTrueAndCategory(category, pageable);
+        } else if (businessType != null) {
+            page = businessRepository.findByActiveTrueAndBusinessType(businessType, pageable);
+        } else {
+            page = businessRepository.findByActiveTrue(pageable);
+        }
+        return page.map(this::toPublicResponse);
+    }
+
+    public Business requireById(String businessId) {
+        return businessRepository.findById(businessId)
+                .orElseThrow(() -> ApiException.notFound("Business not found"));
+    }
+
+    public Business requireOwn(User owner) {
+        return businessRepository.findByOwnerId(owner.getId())
+                .orElseThrow(() -> ApiException.notFound("You don't have a business profile yet"));
+    }
+
+    public void requireOwnership(Business business, User actor) {
+        if (!business.getOwner().getId().equals(actor.getId())) {
+            throw ApiException.forbidden("You do not own this business");
+        }
+    }
+
+    PublicBusinessResponse toPublicResponse(Business b) {
+        return new PublicBusinessResponse(
+                b.getId(), b.getName(), b.getDescription(), b.getLogoUrl(), b.getCategory(), b.getBusinessType(),
+                b.getLocation(), b.getContactPhone(), b.getContactEmail(), new java.util.ArrayList<>(b.getOperatingHours()),
+                new java.util.ArrayList<>(b.getFulfilmentOptions()),
+                new java.util.ArrayList<>(b.getCapabilities()),
+                b.isActive(), b.getRatingAverage(), b.getRatingCount(), b.getMinimumOrderAmount(), b.getDeliveryFee(),
+                b.getCreatedAt());
+    }
+
+    private BusinessResponse toResponse(Business b) {
+        return new BusinessResponse(
+                b.getId(), b.getOwner().getId(), b.getOwner().getFullName(),
+                b.getName(), b.getDescription(), b.getLogoUrl(), b.getCategory(), b.getBusinessType(),
+                b.getLocation(), b.getContactPhone(), b.getContactEmail(), b.getOperatingHours(),
+                new java.util.ArrayList<>(b.getFulfilmentOptions()),
+                new java.util.ArrayList<>(b.getCapabilities()),
+                b.getRegistrationStatus(), b.getRegistrationNumber(), b.isActive(),
+                b.getRatingAverage(), b.getRatingCount(), b.getMinimumOrderAmount(), b.getDeliveryFee(),
+                b.getCreatedAt());
+    }
+}
