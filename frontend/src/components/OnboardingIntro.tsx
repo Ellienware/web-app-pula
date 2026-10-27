@@ -19,7 +19,7 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }) {
     <div className="auth-wrap">
       <div className="auth-panel">
         <section aria-labelledby="onb-title" style={{ maxWidth: 440, margin: "0 auto", textAlign: "center" }}>
-          <span className="brand-mark large" aria-hidden="true">◎</span>
+          <img className="brand-mark large brand-image-mark" src="/brand/pula-app-icon-1024.png" alt="PULA logo" />
           <p className="muted" aria-live="polite">Step {index + 1} of {total}</p>
           <h1 id="onb-title" tabIndex={-1} ref={headingRef}>{step.title}</h1>
           <p>{step.body}</p>

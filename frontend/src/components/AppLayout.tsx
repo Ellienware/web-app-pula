@@ -65,11 +65,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <Link to="/" className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            ◎
-          </span>
-          <span className="brand-name">PULA</span>
+        <Link to="/" className="brand" aria-label="PULA home">
+          <img
+            className="brand-logo"
+            src="/brand/pula-logo-wordmark.png"
+            alt="PULA — Save. Shop. Move. Grow."
+          />
         </Link>
 
         <nav className="primary-nav-desktop" aria-label="Primary">

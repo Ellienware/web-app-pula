@@ -64,7 +64,7 @@ export function AuthPage() {
     <div className="auth-wrap">
       <div className="auth-hero" aria-hidden="true">
         <div className="auth-hero-inner">
-          <span className="brand-mark large">◎</span>
+          <img className="brand-mark large brand-image-mark" src="/brand/pula-app-icon-1024.png" alt="PULA logo" />
           <h1>PULA</h1>
           <p className="auth-tagline">Save. Shop. Move. Grow.</p>
           <p>One PULA account to save together, shop the market, restock your business, and move around your city.</p>

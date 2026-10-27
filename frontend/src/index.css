@@ -3103,3 +3103,29 @@ button {
 .image-field-thumb { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .image-field-thumb img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; }
 .food-menu-item .media-thumb + div { flex: 1; }
+
+
+/* PULA brand assets */
+.brand-logo {
+  display: block;
+  width: 142px;
+  height: 48px;
+  object-fit: contain;
+  object-position: left center;
+  flex-shrink: 0;
+}
+
+.brand-image-mark {
+  display: block;
+  object-fit: contain;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 859px) {
+  .brand-logo {
+    width: 116px;
+    height: 42px;
+  }
+}
