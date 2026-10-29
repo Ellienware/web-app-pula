@@ -13,8 +13,19 @@ export default function WholesaleProductCard({ product, onAddToCart }: Props) {
 
   return (
     <div className="product-card">
-      <div className="product-card-image product-card-placeholder" aria-hidden="true">
-        <span style={{ fontSize: "2rem" }}>📦</span>
+      <div className="product-card-image">
+        {product.imageUrls?.[0] ? (
+          <img
+            src={product.imageUrls[0]}
+            alt={product.name}
+            loading="lazy"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          <div className="product-card-placeholder" aria-hidden="true">
+            <span style={{ fontSize: "2rem" }}>📦</span>
+          </div>
+        )}
       </div>
       <div className="product-card-body">
         <p className="product-card-business">{product.supplierBusinessName}</p>
@@ -23,9 +34,11 @@ export default function WholesaleProductCard({ product, onAddToCart }: Props) {
           <p className="muted" style={{ fontSize: "0.75rem", marginBottom: 4 }}>SKU: {product.sku}</p>
         )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
-          <span className="badge">{formatMoney(product.pricePerPack, currency)} / pack</span>
-          <span className="badge badge-muted">{product.packSize} units/pack</span>
-          <span className="badge badge-muted">MOQ: {product.moq} pack{product.moq !== 1 ? "s" : ""}</span>
+          {product.sellingMode !== "INDIVIDUAL_ONLY" && <span className="badge">{formatMoney(product.pricePerPack, currency)} / pack</span>}
+          {(product.sellingMode === "INDIVIDUAL_ONLY" || product.sellingMode === "BOTH") && product.pricePerUnit != null && <span className="badge">{formatMoney(product.pricePerUnit, currency)} / unit</span>}
+          <span className="badge badge-muted">{product.sellingMode === "BOTH" ? "Individual + bulk" : product.sellingMode === "INDIVIDUAL_ONLY" ? "Individual only" : "Bulk only"}</span>
+          {product.sellingMode !== "INDIVIDUAL_ONLY" && <span className="badge badge-muted">{product.packSize} units/pack</span>}
+          {product.sellingMode !== "INDIVIDUAL_ONLY" && <span className="badge badge-muted">MOQ: {product.moq} pack{product.moq !== 1 ? "s" : ""}</span>}
           {product.availableStock <= 5 && product.availableStock > 0 && (
             <span className="badge" style={{ color: "var(--warning)", borderColor: "var(--warning-soft)", background: "var(--warning-soft)" }}>
               Only {product.availableStock} left
@@ -42,10 +55,10 @@ export default function WholesaleProductCard({ product, onAddToCart }: Props) {
         )}
         <Button
           onClick={onAddToCart}
-          disabled={product.availableStock === 0}
+          disabled={product.availableStock === 0 || product.sellingMode === "INDIVIDUAL_ONLY"}
           style={{ width: "100%" }}
         >
-          Add {product.moq} pack{product.moq !== 1 ? "s" : ""} to stock cart
+          {product.sellingMode === "INDIVIDUAL_ONLY" ? "Individual checkout coming next" : `Add ${product.moq} pack${product.moq !== 1 ? "s" : ""} to stock cart`}
         </Button>
       </div>
     </div>

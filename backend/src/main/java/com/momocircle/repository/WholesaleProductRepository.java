@@ -1,6 +1,7 @@
 package com.momocircle.repository;
 
 import com.momocircle.domain.WholesaleProduct;
+import com.momocircle.domain.enums.MatchClassification;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -26,6 +27,10 @@ public interface WholesaleProductRepository extends JpaRepository<WholesaleProdu
     Page<WholesaleProduct> search(@Param("term") String term, Pageable pageable);
 
     Optional<WholesaleProduct> findByIdAndSupplierBusinessId(String id, String supplierBusinessId);
+
+    /** Active listings explicitly linked to a canonical product and classification. */
+    java.util.List<WholesaleProduct> findByCanonicalProductIdAndMatchClassificationAndActiveTrue(
+            String canonicalProductId, MatchClassification matchClassification);
 
     /** Used to prevent duplicate SKU within a supplier's catalogue. */
     long countBySupplierBusinessId(String supplierBusinessId);

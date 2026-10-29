@@ -14,58 +14,115 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.momocircle.domain.UploadedImage;
+import com.momocircle.repository.UploadedImageRepository;
+import com.momocircle.services.UploadedImageRules;
 
 @Service
 public class BusinessService {
 
     private final BusinessRepository businessRepository;
+    private final UploadedImageRepository uploadedImageRepository;
 
-    public BusinessService(BusinessRepository businessRepository) {
+    public BusinessService(
+            BusinessRepository businessRepository,
+            UploadedImageRepository uploadedImageRepository) {
         this.businessRepository = businessRepository;
+        this.uploadedImageRepository = uploadedImageRepository;
     }
 
-    @Transactional
-    public BusinessResponse create(User owner, CreateBusinessRequest req) {
-        if (businessRepository.findByOwnerId(owner.getId()).isPresent()) {
-            throw ApiException.conflict("You already have a business profile");
-        }
-        Business business = new Business();
-        business.setOwner(owner);
-        business.setName(req.name().trim());
-        business.setDescription(req.description());
-        business.setLogoUrl(req.logoUrl());
-        business.setCategory(req.category());
-        // No implicit default: a missing type is a client error, never a silent LOCAL_BUSINESS.
-        // (The controller's @Valid rejects null first; this guards direct service callers.)
-        if (req.businessType() == null) {
-            throw ApiException.badRequest("Choose a business type");
-        }
-        business.setBusinessType(req.businessType());
-        business.setLocation(req.location());
-        business.setContactPhone(req.contactPhone());
-        business.setContactEmail(req.contactEmail());
-        if (req.operatingHours() != null) {
-            business.setOperatingHours(req.operatingHours());
-        }
-        if (req.fulfilmentOptions() != null) {
-            business.setFulfilmentOptions(new java.util.LinkedHashSet<>(req.fulfilmentOptions()));
-        }
-        if (req.capabilities() != null) {
-            if (req.capabilities().isEmpty()) {
-                throw ApiException.badRequest("A business needs at least one capability");
-            }
-            business.setCapabilities(new java.util.LinkedHashSet<>(req.capabilities()));
-        }
-        if (req.registrationStatus() != null) {
-            business.setRegistrationStatus(req.registrationStatus());
-        }
-        if (req.registrationNumber() != null) {
-            business.setRegistrationNumber(req.registrationNumber().isBlank() ? null : req.registrationNumber().trim());
-        }
-        business.setMinimumOrderAmount(req.minimumOrderAmount());
-        business.setDeliveryFee(req.deliveryFee());
-        return toResponse(businessRepository.save(business));
+@Transactional
+public BusinessResponse create(User owner, CreateBusinessRequest req) {
+    if (businessRepository.findByOwnerId(owner.getId()).isPresent()) {
+        throw ApiException.conflict("You already have a business profile");
     }
+
+    // Require an explicit business type.
+    if (req.businessType() == null) {
+        throw ApiException.badRequest("Choose a business type");
+    }
+
+    // Require a valid uploaded logo path.
+    String logoUrl = req.logoUrl();
+
+    if (logoUrl == null || !UploadedImageRules.isUploadedPath(logoUrl)) {
+        throw ApiException.badRequest(
+                "Upload your business logo before creating your business"
+        );
+    }
+
+    // Only allow a pending logo uploaded by this user.
+    String logoId = logoUrl.substring(UploadedImageRules.PATH_PREFIX.length());
+
+    UploadedImage logo = uploadedImageRepository
+            .findByIdAndUploadedByAndBusinessIdIsNull(logoId, owner.getId())
+            .orElseThrow(() -> ApiException.badRequest(
+                    "Upload your business logo before creating your business"
+            ));
+
+    Business business = new Business();
+    business.setOwner(owner);
+    business.setName(req.name().trim());
+    business.setDescription(req.description());
+    business.setLogoUrl(logoUrl);
+    business.setCategory(req.category());
+    business.setBusinessType(req.businessType());
+    business.setLocation(req.location());
+    business.setContactPhone(req.contactPhone());
+    business.setContactEmail(req.contactEmail());
+
+    if (req.operatingHours() != null) {
+        business.setOperatingHours(req.operatingHours());
+    }
+
+    if (req.fulfilmentOptions() != null) {
+        business.setFulfilmentOptions(
+                new java.util.LinkedHashSet<>(req.fulfilmentOptions())
+        );
+    }
+
+    if (req.capabilities() != null) {
+        if (req.capabilities().isEmpty()) {
+            throw ApiException.badRequest(
+                    "A business needs at least one capability"
+            );
+        }
+
+        business.setCapabilities(
+                new java.util.LinkedHashSet<>(req.capabilities())
+        );
+    }
+
+    // Wholesaler suppliers can serve consumers and other businesses.
+    if (business.getBusinessType()
+            == com.momocircle.domain.enums.BusinessType.WHOLESALER_SUPPLIER) {
+        business.getCapabilities().add(BusinessCapability.CAN_SELL_TO_CONSUMERS);
+        business.getCapabilities().add(BusinessCapability.CAN_SUPPLY_BUSINESSES);
+    }
+
+    if (req.registrationStatus() != null) {
+        business.setRegistrationStatus(req.registrationStatus());
+    }
+
+    if (req.registrationNumber() != null) {
+        business.setRegistrationNumber(
+                req.registrationNumber().isBlank()
+                        ? null
+                        : req.registrationNumber().trim()
+        );
+    }
+
+    business.setMinimumOrderAmount(req.minimumOrderAmount());
+    business.setDeliveryFee(req.deliveryFee());
+
+    // Save the business before associating the uploaded logo.
+    Business savedBusiness = businessRepository.save(business);
+
+    logo.setBusinessId(savedBusiness.getId());
+    uploadedImageRepository.save(logo);
+
+    return toResponse(savedBusiness);
+}
 
     @Transactional
     public BusinessResponse update(User owner, UpdateBusinessRequest req) {
@@ -90,6 +147,10 @@ public class BusinessService {
                 throw ApiException.badRequest("A business needs at least one capability");
             }
             business.setCapabilities(new java.util.LinkedHashSet<>(req.capabilities()));
+        }
+        if (business.getBusinessType() == com.momocircle.domain.enums.BusinessType.WHOLESALER_SUPPLIER) {
+            business.getCapabilities().add(BusinessCapability.CAN_SELL_TO_CONSUMERS);
+            business.getCapabilities().add(BusinessCapability.CAN_SUPPLY_BUSINESSES);
         }
         if (req.registrationStatus() != null) {
             business.setRegistrationStatus(req.registrationStatus());

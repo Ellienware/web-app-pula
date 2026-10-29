@@ -162,6 +162,9 @@ public class BulkPurchaseService {
         writeLimit(user);
         WholesaleProduct p = products.findById(req.wholesaleProductId()).filter(WholesaleProduct::isActive)
                 .orElseThrow(() -> ApiException.notFound("Wholesale product not found"));
+        if ("INDIVIDUAL_ONLY".equals(p.getSellingMode())) {
+            throw ApiException.badRequest("This product is sold individually and cannot be added to a bulk-purchase group");
+        }
         Business supplier = p.getSupplierBusiness();
         if (!supplier.isActive() || !supplier.hasCapability(BusinessCapability.CAN_SUPPLY_BUSINESSES)) {
             throw ApiException.badRequest("That supplier is not currently able to supply other businesses");

@@ -34,8 +34,24 @@ public class StockDtos {
             @Min(1) int packSize,
             @Min(1) int moq,
             @NotNull @Min(0) BigDecimal pricePerPack,
-            @Min(0) int availableStock
-    ) {}
+            @Min(0) int availableStock,
+            String sellingMode,
+            BigDecimal pricePerUnit,
+            List<String> imageUrls
+    ) {
+        public CreateWholesaleProductRequest(String name, String description, String sku, String category,
+                                            int packSize, int moq, BigDecimal pricePerPack, int availableStock,
+                                            String sellingMode, BigDecimal pricePerUnit) {
+            this(name, description, sku, category, packSize, moq, pricePerPack, availableStock,
+                    sellingMode, pricePerUnit, null);
+        }
+
+        public CreateWholesaleProductRequest(String name, String description, String sku, String category,
+                                            int packSize, int moq, BigDecimal pricePerPack, int availableStock) {
+            this(name, description, sku, category, packSize, moq, pricePerPack, availableStock,
+                    "BULK_ONLY", null, null);
+        }
+    }
 
     public record UpdateWholesaleProductRequest(
             String name,
@@ -46,8 +62,26 @@ public class StockDtos {
             Integer moq,
             BigDecimal pricePerPack,
             Integer availableStock,
-            Boolean active
-    ) {}
+            Boolean active,
+            String sellingMode,
+            BigDecimal pricePerUnit,
+            List<String> imageUrls
+    ) {
+        public UpdateWholesaleProductRequest(String name, String description, String sku, String category,
+                                             Integer packSize, Integer moq, BigDecimal pricePerPack,
+                                             Integer availableStock, Boolean active,
+                                             String sellingMode, BigDecimal pricePerUnit) {
+            this(name, description, sku, category, packSize, moq, pricePerPack, availableStock,
+                    active, sellingMode, pricePerUnit, null);
+        }
+
+        public UpdateWholesaleProductRequest(String name, String description, String sku, String category,
+                                             Integer packSize, Integer moq, BigDecimal pricePerPack,
+                                             Integer availableStock, Boolean active) {
+            this(name, description, sku, category, packSize, moq, pricePerPack, availableStock,
+                    active, null, null, null);
+        }
+    }
 
     public record WholesaleProductResponse(
             String id,
@@ -62,9 +96,30 @@ public class StockDtos {
             BigDecimal pricePerPack,
             String currency,
             int availableStock,
+            String sellingMode,
+            BigDecimal pricePerUnit,
             boolean active,
-            Instant createdAt
-    ) {}
+            Instant createdAt,
+            List<String> imageUrls,
+            String canonicalProductId,
+            String canonicalProductName,
+            com.momocircle.domain.enums.MatchClassification matchClassification
+    ) {
+        /** Backwards-compatible constructor for existing callers and tests. */
+        public WholesaleProductResponse(
+                String id, String supplierBusinessId, String supplierBusinessName,
+                String name, String description, String sku, String category,
+                int packSize, int moq, BigDecimal pricePerPack, String currency,
+                int availableStock, String sellingMode, BigDecimal pricePerUnit,
+                boolean active, Instant createdAt, List<String> imageUrls
+        ) {
+            this(id, supplierBusinessId, supplierBusinessName, name, description,
+                    sku, category, packSize, moq, pricePerPack, currency,
+                    availableStock, sellingMode, pricePerUnit, active, createdAt,
+                    imageUrls, null, null,
+                    com.momocircle.domain.enums.MatchClassification.UNIQUE_PRODUCT);
+        }
+    }
 
     // ---- Stock Cart ----
 

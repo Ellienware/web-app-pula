@@ -166,7 +166,7 @@ class ServicesMarketplaceTest {
             });
 
             final World w = this;
-            BusinessService businessService = new BusinessService(null) {
+            BusinessService businessService = new BusinessService(null, null) {
                 @Override public Business requireOwn(User owner) {
                     Business b = w.businessByOwner.get(owner.getId());
                     if (b == null) throw ApiException.notFound("No business");

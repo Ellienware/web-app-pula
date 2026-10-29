@@ -20,6 +20,7 @@ import { CartPage } from "./pages/market/CartPage"
 import { OrdersPage } from "./pages/market/OrdersPage"
 import { OrderDetailPage } from "./pages/market/OrderDetailPage"
 import { SellerDashboardPage } from "./pages/market/SellerDashboardPage"
+import WholesalerDashboardPage from "./pages/market/WholesalerDashboardPage"
 import { BusinessBranchesPage } from "./pages/market/BusinessBranchesPage"
 import { BranchDetailPage } from "./pages/market/BranchDetailPage"
 import { BranchReportPage } from "./pages/market/BranchReportPage"
@@ -127,6 +128,7 @@ export function App() {
         <Route path="/cart" element={<CartPage />} />
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/orders/:id" element={<OrderDetailPage />} />
+        <Route path="/market/wholesaler/dashboard" element={<WholesalerDashboardPage />} />
         <Route path="/sell" element={<SellerDashboardPage />} />
         <Route path="/sell/branches" element={<BusinessBranchesPage />} />
         <Route path="/sell/branches/report" element={<BranchReportPage />} />

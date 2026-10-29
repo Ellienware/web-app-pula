@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 @Table(name = "uploaded_images")
 public class UploadedImage extends BaseEntity {
 
-    @Column(name = "business_id", nullable = false, length = 36, updatable = false)
+    @Column(name = "business_id", nullable = true, length = 36)
     private String businessId;
 
     @Column(name = "uploaded_by", nullable = false, length = 36, updatable = false)

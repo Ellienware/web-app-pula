@@ -1,6 +1,9 @@
 package com.momocircle.domain;
 
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.Column;
+import com.momocircle.domain.enums.MatchClassification;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
@@ -28,11 +31,29 @@ public class WholesaleProduct extends BaseEntity {
     @JoinColumn(name = "supplier_business_id", nullable = false)
     private Business supplierBusiness;
 
+    /** Optional link to the shared canonical catalogue; never auto-assigned. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "canonical_product_id")
+    private CanonicalProduct canonicalProduct;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "match_classification", nullable = false, length = 32)
+    private MatchClassification matchClassification = MatchClassification.UNIQUE_PRODUCT;
+
     @Column(nullable = false, length = 200)
     private String name;
 
     @Column(length = 2000)
     private String description;
+
+    /** Up to four product images, stored as URLs or uploaded-image paths. */
+    @jakarta.persistence.ElementCollection
+    @jakarta.persistence.CollectionTable(
+            name = "wholesale_product_image_urls",
+            joinColumns = @jakarta.persistence.JoinColumn(name = "wholesale_product_id")
+    )
+    @jakarta.persistence.Column(name = "image_url", nullable = false, length = 500)
+    private java.util.List<String> imageUrls = new java.util.ArrayList<>();
 
     /** Optional SKU — supplier's own reference code for this product. */
     @Column(length = 100)
@@ -50,6 +71,14 @@ public class WholesaleProduct extends BaseEntity {
     @Column(nullable = false)
     private int moq = 1;
 
+    /** Supported purchase modes: INDIVIDUAL_ONLY, BULK_ONLY, or BOTH. */
+    @Column(name = "selling_mode", nullable = false, length = 30)
+    private String sellingMode = "BULK_ONLY";
+
+    /** Explicit individual-unit price; never inferred from the pack price. */
+    @Column(name = "price_per_unit", precision = 19, scale = 2)
+    private BigDecimal pricePerUnit;
+
     /** Wholesale price per pack (not per individual unit). Backend is authoritative — never trust client price. */
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal pricePerPack;
@@ -66,10 +95,23 @@ public class WholesaleProduct extends BaseEntity {
 
     public Business getSupplierBusiness() { return supplierBusiness; }
     public void setSupplierBusiness(Business supplierBusiness) { this.supplierBusiness = supplierBusiness; }
+    public CanonicalProduct getCanonicalProduct() { return canonicalProduct; }
+    public void setCanonicalProduct(CanonicalProduct canonicalProduct) { this.canonicalProduct = canonicalProduct; }
+    public MatchClassification getMatchClassification() { return matchClassification; }
+    public void setMatchClassification(MatchClassification matchClassification) {
+        this.matchClassification = matchClassification == null
+                ? MatchClassification.UNIQUE_PRODUCT : matchClassification;
+    }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public java.util.List<String> getImageUrls() { return imageUrls; }
+    public void setImageUrls(java.util.List<String> imageUrls) {
+        this.imageUrls = imageUrls == null
+                ? new java.util.ArrayList<>()
+                : new java.util.ArrayList<>(imageUrls);
+    }
     public String getSku() { return sku; }
     public void setSku(String sku) { this.sku = sku; }
     public String getCategory() { return category; }
@@ -78,6 +120,10 @@ public class WholesaleProduct extends BaseEntity {
     public void setPackSize(int packSize) { this.packSize = packSize; }
     public int getMoq() { return moq; }
     public void setMoq(int moq) { this.moq = moq; }
+    public String getSellingMode() { return sellingMode; }
+    public void setSellingMode(String sellingMode) { this.sellingMode = sellingMode; }
+    public BigDecimal getPricePerUnit() { return pricePerUnit; }
+    public void setPricePerUnit(BigDecimal pricePerUnit) { this.pricePerUnit = pricePerUnit; }
     public BigDecimal getPricePerPack() { return pricePerPack; }
     public void setPricePerPack(BigDecimal pricePerPack) { this.pricePerPack = pricePerPack; }
     public String getCurrency() { return currency; }

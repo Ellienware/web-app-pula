@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -15,6 +16,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.Base64;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -96,7 +98,22 @@ class StokvelMembershipEndToEndTest {
 
         // 1. business creation (existing API) works for the authenticated owner and not for the anonymous caller
         assertTrue(status(doPost(null, "/api/businesses", "{\"name\":\"Thandi Spaza\",\"category\":\"Groceries\"}")) >= 400);
-        MvcResult biz = doPost(owner, "/api/businesses", "{\"name\":\"Thandi Spaza\",\"category\":\"Groceries\",\"businessType\":\"INFORMAL_TRADER\",\"location\":\"Soweto\","
+        byte[] png = Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5Z8AAAAASUVORK5CYII="
+        );
+        MockMultipartFile logoFile = new MockMultipartFile(
+                "file", "thandi-spaza.png", "image/png", png
+        );
+        MvcResult logo = mvc.perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/images/business-logo")
+                        .file(logoFile)
+                        .header("Authorization", "Bearer " + owner.token())
+        ).andReturn();
+        assertEquals(201, status(logo), body(logo));
+        String logoUrl = json(logo, "$.url");
+
+        MvcResult biz = doPost(owner, "/api/businesses", "{\"name\":\"Thandi Spaza\",\"category\":\"Groceries\",\"logoUrl\":\"" + logoUrl + "\",\"businessType\":\"INFORMAL_TRADER\",\"location\":\"Soweto\","
                 + "\"contactPhone\":\"0821234567\",\"registrationStatus\":\"NOT_REGISTERED\",\"fulfilmentOptions\":[\"CUSTOMER_PICKUP\"],\"capabilities\":[\"CAN_SELL_TO_CONSUMERS\"]}");
         assertTrue(status(biz) == 200 || status(biz) == 201, body(biz));
         assertEquals("Thandi Spaza", json(doGet(owner, "/api/businesses/me"), "$.name"));

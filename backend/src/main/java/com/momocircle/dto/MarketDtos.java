@@ -254,6 +254,37 @@ public final class MarketDtos {
             List<ProductPriceComparisonEntry> similarAlternatives
     ) {}
 
+    /**
+     * Wholesale comparison entry. normalizedPricePerItem is derived from the
+     * pack price only when packSize is positive; the original pack price
+     * remains authoritative for ordering.
+     */
+    public record WholesalePriceComparisonEntry(
+            String wholesaleProductId,
+            String supplierBusinessId,
+            String supplierBusinessName,
+            String name,
+            BigDecimal pricePerPack,
+            String currency,
+            int packSize,
+            int moq,
+            int availableStock,
+            String sellingMode,
+            BigDecimal pricePerUnit,
+            BigDecimal normalizedPricePerItem,
+            boolean available
+    ) {}
+
+    /**
+     * Exact matches and similar alternatives are deliberately separate lists.
+     */
+    public record WholesalePriceComparisonResponse(
+            String canonicalProductId,
+            String canonicalProductName,
+            List<WholesalePriceComparisonEntry> exactMatches,
+            List<WholesalePriceComparisonEntry> similarAlternatives
+    ) {}
+
     // ---- Basket comparison ----
 
     public record BasketItemRequest(

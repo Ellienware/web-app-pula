@@ -62,6 +62,64 @@ public class ImageService {
         return new Uploaded(img.getId(), UploadedImageRules.PATH_PREFIX + img.getId(), type, bytes.length);
     }
 
+    @Transactional
+public Uploaded uploadBusinessLogo(User owner, MultipartFile file) {
+    if (file == null || file.isEmpty()) {
+        throw ApiException.badRequest("Choose a business logo");
+    }
+
+    if (file.getSize() > UploadedImageRules.MAX_BYTES) {
+        throw new ApiException(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                "Image is too large (maximum 2 MB)"
+        );
+    }
+
+    byte[] bytes;
+    try {
+        bytes = file.getBytes();
+    } catch (IOException e) {
+        throw ApiException.badRequest("Could not read that file");
+    }
+
+    if (bytes.length > UploadedImageRules.MAX_BYTES) {
+        throw new ApiException(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                "Image is too large (maximum 2 MB)"
+        );
+    }
+
+    String type = UploadedImageRules.detectType(bytes);
+    if (type == null) {
+        throw ApiException.badRequest(
+                "Only JPEG, PNG or WebP images are allowed"
+        );
+    }
+
+    // Limit abandoned, unattached logo uploads per user.
+    if (images.countByUploadedByAndBusinessIdIsNull(owner.getId()) >= 5) {
+        throw ApiException.conflict(
+                "Too many pending logo uploads. Try again later."
+        );
+    }
+
+    UploadedImage img = new UploadedImage();
+    img.setBusinessId(null);
+    img.setUploadedBy(owner.getId());
+    img.setContentType(type);
+    img.setSizeBytes(bytes.length);
+    img.setData(bytes);
+
+    images.save(img);
+
+    return new Uploaded(
+            img.getId(),
+            UploadedImageRules.PATH_PREFIX + img.getId(),
+            type,
+            bytes.length
+    );
+}
+
     @Transactional(readOnly = true)
     public Stored read(String id) {
         UploadedImage img = images.findById(id).orElseThrow(() -> ApiException.notFound("Image not found"));

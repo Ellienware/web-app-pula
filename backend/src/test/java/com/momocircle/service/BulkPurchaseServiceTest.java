@@ -154,7 +154,7 @@ class BulkPurchaseServiceTest {
                 "deleteByWholesaleProductId", a -> { tierStore.clear(); return null; }));
         StockOrderRepository orderRepo = repo(StockOrderRepository.class, orderStore, Map.of());
 
-        BusinessService businessService = new BusinessService(null) {
+        BusinessService businessService = new BusinessService(null, null) {
             @Override public Business requireOwn(User owner) {
                 Business b = businessByUser.get(owner);
                 if (b == null) throw ApiException.notFound("You don't have a business profile yet");

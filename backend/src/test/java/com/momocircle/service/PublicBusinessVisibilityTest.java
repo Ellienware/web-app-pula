@@ -12,6 +12,7 @@ import com.momocircle.dto.MarketDtos.BusinessResponse;
 import com.momocircle.dto.MarketDtos.PublicBusinessResponse;
 import com.momocircle.exception.ApiException;
 import com.momocircle.repository.BusinessRepository;
+import com.momocircle.repository.UploadedImageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
@@ -53,7 +54,7 @@ class PublicBusinessVisibilityTest {
     @BeforeEach
     void setUp() {
         repo = mock(BusinessRepository.class);
-        service = new BusinessService(repo);
+        service = new BusinessService(repo, mock(UploadedImageRepository.class));
         owner = user("owner-1", "Owner One", PlatformRole.USER);
         stranger = user("other-2", "Someone Else", PlatformRole.USER);
         admin = user("admin-3", "Admin Three", PlatformRole.ADMIN);

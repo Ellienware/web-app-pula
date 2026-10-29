@@ -1161,8 +1161,37 @@ export interface WholesaleProduct {
   pricePerPack: number
   currency: string
   availableStock: number
+  sellingMode: "INDIVIDUAL_ONLY" | "BULK_ONLY" | "BOTH"
+  pricePerUnit: number | null
   active: boolean
   createdAt: string
+  imageUrls: string[]
+  canonicalProductId?: string | null
+  canonicalProductName?: string | null
+  matchClassification?: MatchClassification
+}
+
+export interface WholesalePriceComparisonEntry {
+  wholesaleProductId: string
+  supplierBusinessId: string
+  supplierBusinessName: string
+  name: string
+  pricePerPack: number | null
+  currency: string
+  packSize: number
+  moq: number
+  availableStock: number
+  sellingMode: string
+  pricePerUnit: number | null
+  normalizedPricePerItem: number | null
+  available: boolean
+}
+
+export interface WholesalePriceComparison {
+  canonicalProductId: string
+  canonicalProductName: string
+  exactMatches: WholesalePriceComparisonEntry[]
+  similarAlternatives: WholesalePriceComparisonEntry[]
 }
 
 export interface CreateWholesaleProductRequest {
@@ -1174,6 +1203,9 @@ export interface CreateWholesaleProductRequest {
   moq: number
   pricePerPack: number
   availableStock: number
+  sellingMode: "INDIVIDUAL_ONLY" | "BULK_ONLY" | "BOTH"
+  pricePerUnit?: number | null
+  imageUrls?: string[] | null
 }
 
 export interface StockCartItem {

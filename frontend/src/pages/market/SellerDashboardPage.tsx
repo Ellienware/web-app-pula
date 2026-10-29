@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import {Link, useNavigate } from "react-router-dom"
 import { Package, Plus, Store } from "lucide-react"
 import { api, ApiError } from "../../lib/api"
 import type { Business, Order, Page, Product, SellerDashboard } from "../../lib/types"
@@ -26,6 +26,7 @@ import { SkeletonCard, SkeletonGrid } from "../../components/ui/Skeleton"
 type Tab = "overview" | "products" | "orders" | "settings"
 
 export function SellerDashboardPage() {
+  const navigate = useNavigate()
   const { defaultCurrency } = useCurrencyConfig()
   const [business, setBusiness] = useState<Business | null>(null)
   const [hasBusiness, setHasBusiness] = useState<boolean | null>(null)
@@ -45,13 +46,19 @@ export function SellerDashboardPage() {
       .then((b) => {
         setBusiness(b)
         setHasBusiness(true)
+
+        if (b.businessType === "WHOLESALER_SUPPLIER") {
+          navigate("/market/wholesaler/dashboard", { replace: true })
+        } else if (b.businessType === "SERVICE_PROVIDER") {
+          navigate("/services/provider", { replace: true })
+        }
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 404) {
           setHasBusiness(false)
         }
       })
-  }, [])
+  }, [navigate])
 
   useEffect(loadBusiness, [loadBusiness])
 
@@ -118,8 +125,20 @@ export function SellerDashboardPage() {
         {showOnboarding && (
           <CreateBusinessModal
             onClose={() => setShowOnboarding(false)}
-            onCreated={() => {
+            onCreated={(createdBusiness) => {
               setShowOnboarding(false)
+              if (createdBusiness.businessType === "WHOLESALER_SUPPLIER") {
+                setBusiness(createdBusiness)
+                setHasBusiness(true)
+                navigate("/market/wholesaler/dashboard", { replace: true })
+                return
+              }
+              if (createdBusiness.businessType === "SERVICE_PROVIDER") {
+                setBusiness(createdBusiness)
+                setHasBusiness(true)
+                navigate("/services/provider", { replace: true })
+                return
+              }
               loadBusiness()
             }}
           />
@@ -248,11 +267,37 @@ export function SellerDashboardPage() {
           ) : (
             <ul className="stack">
               {products.map((p) => (
-                <li key={p.id} className="card row between">
-                  <div>
-                    <strong>{p.name}</strong>
-                    <div className="muted">
-                      {formatMoney(p.price, p.currency)} · {p.isService ? "Service" : `${p.stock} in stock`}
+                <li key={p.id} className="card row between" style={{ gap: "1rem", alignItems: "center" }}>
+                  <div className="row" style={{ gap: "0.875rem", minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        width: 76,
+                        height: 76,
+                        flexShrink: 0,
+                        overflow: "hidden",
+                        borderRadius: 8,
+                        background: "var(--surface-secondary, #f3f4f6)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {p.imageUrls?.[0] ? (
+                        <img
+                          src={p.imageUrls[0]}
+                          alt={p.name}
+                          loading="lazy"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <Package size={26} aria-hidden="true" />
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{p.name}</strong>
+                      <div className="muted">
+                        {formatMoney(p.price, p.currency)} · {p.isService ? "Service" : `${p.stock} in stock`}
+                      </div>
                     </div>
                   </div>
                   <div className="row">

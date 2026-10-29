@@ -3,10 +3,14 @@ package com.momocircle.controller;
 import com.momocircle.dto.StockDtos.CreateWholesaleProductRequest;
 import com.momocircle.dto.StockDtos.UpdateWholesaleProductRequest;
 import com.momocircle.dto.StockDtos.WholesaleProductResponse;
+import com.momocircle.dto.MarketDtos.LinkCanonicalProductRequest;
+import com.momocircle.dto.MarketDtos.CanonicalProductResponse;
+import com.momocircle.domain.enums.MatchClassification;
 import com.momocircle.security.CurrentUserService;
 import com.momocircle.service.WholesaleProductService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -63,6 +67,24 @@ public class WholesaleProductController {
     public ResponseEntity<Void> delete(@PathVariable String id) {
         service.delete(currentUser.require(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Explicitly link or unlink a supplier-owned wholesale listing. */
+    @PutMapping("/api/stock/products/{id}/canonical-link")
+    public WholesaleProductResponse linkCanonicalProduct(
+            @PathVariable String id,
+            @RequestBody LinkCanonicalProductRequest req) {
+        return service.linkCanonicalProduct(currentUser.require(), id,
+                req.canonicalProductId(), req.classification());
+    }
+
+    /** Search existing canonical products; selecting a result is always an explicit action. */
+    @GetMapping("/api/stock/canonical-products")
+    public Page<CanonicalProductResponse> searchCanonicalProducts(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.searchCanonicalProducts(q, PageRequest.of(page, Math.min(size, 50)));
     }
 
     // ---- Buyer / public: browse catalogues ----

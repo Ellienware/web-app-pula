@@ -51,6 +51,10 @@ export default function StockMarketPage() {
   }
 
   async function addToCart(product: WholesaleProduct) {
+    if (product.sellingMode === "INDIVIDUAL_ONLY") {
+      setError("This listing is sold by individual unit. Individual-unit checkout is being added separately; it cannot be placed through the pack-based stock cart yet.")
+      return
+    }
     try {
       const updated = await api.post<StockCart>("/stock/cart/items", {
         wholesaleProductId: product.id,
@@ -68,7 +72,7 @@ export default function StockMarketPage() {
     <div className="page stack">
       <PageHeader
         title="PULA Market — Stock"
-        subtitle="Buy stock from wholesalers and suppliers. Prices are per pack (as described)."
+        subtitle="Buy stock from wholesalers and suppliers. Listings show unit and/or pack pricing as offered."
       />
       <StockPlanPanel onCartChanged={setCart} />
 

@@ -58,6 +58,7 @@ public class StockPlannerService {
         String cat = category == null || category.isBlank() ? null : category.trim();
         List<WholesaleProduct> all = productRepository.browse(cat, PageRequest.of(0, 200)).getContent().stream()
                 .filter(p -> !p.getSupplierBusiness().getId().equals(me.getId()))
+                .filter(p -> !"INDIVIDUAL_ONLY".equals(p.getSellingMode()))
                 .filter(p -> p.getAvailableStock() >= p.getMoq() && p.getMoq() >= 1)
                 .toList();
 

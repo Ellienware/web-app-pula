@@ -24,7 +24,7 @@ import { useMarket } from "../context/MarketContext"
 import { api } from "../lib/api"
 import { initials } from "../lib/format"
 import { translatedLanguages, type TranslationKey } from "../lib/i18n/translations"
-import type { AppNotification, Page } from "../lib/types"
+import type { AppNotification, Page, Business } from "../lib/types"
 import { AssistantPanel } from "./AssistantPanel"
 import { OfflineBanner } from "./OfflineBanner"
 
@@ -46,6 +46,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const { cartCount } = useMarket()
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [activeBusiness, setActiveBusiness] = useState<Business | null>(null)
   const location = useLocation()
   // The assistant needs to know which circle/product (if any) is currently open, so a
   // confirmed CONTRIBUTE/ADD_MEMBER/... or ADD_TO_CART action has a target to act on.
@@ -53,6 +54,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const currentCircleId = circleMatch ? circleMatch[1] : null
   const productMatch = location.pathname.match(/^\/market\/products\/([^/]+)/)
   const currentProductId = productMatch ? productMatch[1] : null
+
+  useEffect(() => {
+    if (!user) {
+      setActiveBusiness(null)
+      return
+    }
+    api.get<Business>("/businesses/me")
+      .then((business) => setActiveBusiness(business))
+      .catch(() => setActiveBusiness(null))
+  }, [user])
 
   useEffect(() => {
     if (!user) return
@@ -131,9 +142,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <NavLink to="/save-to-buy" className={({ isActive }) => (isActive ? "active" : undefined)}>
             <PiggyBank size={14} aria-hidden="true" /> Save-to-Buy
           </NavLink>
-          <NavLink to="/sell" className={({ isActive }) => (isActive ? "active" : undefined)}>
+          <NavLink
+            to={activeBusiness?.businessType === "WHOLESALER_SUPPLIER"
+              ? "/market/wholesaler/dashboard"
+              : "/sell"}
+            className={({ isActive }) => (isActive ? "active" : undefined)}
+          >
             <Store size={14} aria-hidden="true" /> Sell on Market
           </NavLink>
+          {activeBusiness?.businessType === "WHOLESALER_SUPPLIER" && (
+            <NavLink to="/market/stock/catalogue" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <Store size={14} aria-hidden="true" /> Wholesale Catalogue
+            </NavLink>
+          )}
           <NavLink to="/market/stock/bulk" className={({ isActive }) => (isActive ? "active" : undefined)}>
             <ShoppingBag size={14} aria-hidden="true" /> Bulk Buying
           </NavLink>

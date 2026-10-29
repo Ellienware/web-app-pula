@@ -35,6 +35,16 @@ public class ImageController {
         return ResponseEntity.status(HttpStatus.CREATED).body(imageService.upload(currentUser.require(), file));
     }
 
+    @PostMapping(
+        value = "/api/images/business-logo",
+        consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+)
+public ResponseEntity<ImageService.Uploaded> uploadBusinessLogo(
+        @RequestPart("file") MultipartFile file) {
+    return ResponseEntity.status(HttpStatus.CREATED)
+            .body(imageService.uploadBusinessLogo(currentUser.require(), file));
+}
+
     @GetMapping("/api/images/{id}")
     public ResponseEntity<byte[]> get(@PathVariable String id) {
         ImageService.Stored s = imageService.read(id);
